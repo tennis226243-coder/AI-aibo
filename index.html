@@ -246,6 +246,10 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
     <div class="f"><label for="model">モデル</label><select id="model"></select>
       <div class="hint">iPhoneで落ちる場合は「軽量」を選んでください。</div></div>
     <label class="switch">会話中は回答を読み上げる<input type="checkbox" id="speakOn"></label>
+    <div class="f"><label for="voiceSel">読み上げの声</label>
+      <div class="row" style="flex-wrap:nowrap"><select id="voiceSel" style="flex:1"></select>
+      <button type="button" class="txt-btn" id="voiceTest">試聴</button></div>
+      <div class="hint">「端末の標準」はiPhoneの読み上げ設定の声を使います。一覧にない声（Siriの声など）はWebアプリからは選べません。</div></div>
     <div class="row">
       <button type="button" class="txt-btn" id="rebootBtn">このモデルで再起動</button>
       <button type="button" class="txt-btn danger" id="clearBtn">このアプリの会話を消去</button>
@@ -577,7 +581,7 @@ $("#log").addEventListener("click", async e => {
 
 /* ══ 設定 ══ */
 const dlg = $("#settings");
-$("#openSettings").addEventListener("click", () => { syncInfo(); dlg.showModal(); });
+$("#openSettings").addEventListener("click", () => { syncInfo(); speech.fill(); dlg.showModal(); });
 dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
 PROJECTS.forEach(p => $("#project").add(new Option(p.name, p.key)));
 MODELS.forEach(m => $("#model").add(new Option(m.label, m.base)));
@@ -742,12 +746,25 @@ let rec = null, listening = false;
 // 読み上げ：回答を文ごとに区切り、生成と並行して話す
 const speech = (() => {
   const syn = window.speechSynthesis;
-  let spoken = 0, pending = 0, idle = null, beat = null, voice = null;
-  const pickVoice = () => {
-    const vs = syn?.getVoices().filter(v => /^ja/i.test(v.lang)) || [];
-    voice = vs.find(v => /enhanced|premium|拡張|プレミアム/i.test(v.name)) || vs.find(v => /Kyoko|O-ren|Otoya/i.test(v.name)) || vs[0] || null;
-  };
-  if (syn){ pickVoice(); syn.addEventListener?.("voiceschanged", pickVoice); }
+  let spoken = 0, pending = 0, idle = null, beat = null;
+  const jaVoices = () => (syn?.getVoices() || []).filter(v => /^ja/i.test(v.lang));
+  // 選んだ声。未選択なら声を指定せず、端末の標準の声に任せる
+  const chosen = () => { const id = store.get("aibo:voice", ""); return id ? jaVoices().find(v => v.voiceURI === id) || null : null; };
+  function fillVoices(){
+    const sel = $("#voiceSel"), cur = store.get("aibo:voice", "");
+    sel.innerHTML = ""; sel.add(new Option("端末の標準", ""));
+    jaVoices().forEach(v => sel.add(new Option(v.name + (v.localService ? "" : "（通信）"), v.voiceURI)));
+    sel.value = [...sel.options].some(o => o.value === cur) ? cur : "";
+  }
+  if (syn){ fillVoices(); syn.addEventListener?.("voiceschanged", fillVoices); }
+  $("#voiceSel").addEventListener("change", e => store.set("aibo:voice", e.target.value));
+  $("#voiceTest").addEventListener("click", () => {
+    if (!syn) return;
+    syn.cancel();
+    const u = new SpeechSynthesisUtterance("コアです。この声で読み上げます。");
+    u.lang = "ja-JP"; u.rate = 1.08; const v = chosen(); if (v) u.voice = v;
+    syn.speak(u);
+  });
   // 画面向けの記号を外し、コードは読まずに一言だけ添える
   const speakable = t => {
     t = t.replace(/```[\s\S]*?```/g, "。コードは画面に表示しました。");
@@ -757,7 +774,7 @@ const speech = (() => {
   function say(text){
     if (!syn) return;
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP"; u.rate = 1.08; u.pitch = 1; if (voice) u.voice = voice;
+    u.lang = "ja-JP"; u.rate = 1.08; u.pitch = 1; const v = chosen(); if (v) u.voice = v;
     pending++;
     if (!beat){
       sphere.set("speak"); status("発話中", "マイクをタップすると会話を終了します");
@@ -783,6 +800,7 @@ const speech = (() => {
     },
     drained(){ return pending === 0 ? Promise.resolve() : new Promise(r => idle = r); },
     stop(){ syn?.cancel(); pending = 0; clearInterval(beat); beat = null; if (idle){ const f = idle; idle = null; f(); } },
+    fill: fillVoices,
     prime(){ if (syn){ const u = new SpeechSynthesisUtterance(""); u.volume = 0; syn.speak(u); } },  // iPhoneはタップ時に一度鳴らす必要がある
   };
 })();
