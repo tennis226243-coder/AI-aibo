@@ -193,7 +193,7 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
 .sheet header{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;box-shadow:0 1px 0 var(--line-3)}
 .sheet h2{margin:0;font-size:.85rem;font-weight:500;letter-spacing:.4em;color:var(--hi)}
 .f label{display:block;font-size:.72rem;color:var(--soft);margin-bottom:6px}
-.f select,.f textarea,.f input[type=password]{width:100%;font:inherit;font-size:16px;color:var(--hi);border:0;border-radius:0;background:rgba(1,8,14,.7);box-shadow:inset 0 0 0 1px var(--line-3);padding:9px 10px}
+.f select,.f textarea,.f input[type=password],.f input[type=text]{width:100%;font:inherit;font-size:16px;color:var(--hi);border:0;border-radius:0;background:rgba(1,8,14,.7);box-shadow:inset 0 0 0 1px var(--line-3);padding:9px 10px}
 .f select{-webkit-appearance:none;appearance:none;padding-right:28px;
   background-image:linear-gradient(45deg,transparent 50%,var(--line) 50%),linear-gradient(135deg,var(--line) 50%,transparent 50%);
   background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat}
@@ -293,11 +293,10 @@ input[type=range]{width:100%;accent-color:var(--line);margin:4px 0 0}
       <input type="password" id="gemKey" autocomplete="off" spellcheck="false" placeholder="AIza で始まるキー">
       <div class="hint">Google AI Studio（aistudio.google.com/apikey）で無料で発行できます。キーはこの端末にだけ保存され、他の人には見えません。</div>
       <label for="gemModel" style="margin-top:12px">Geminiのモデル</label>
-      <select id="gemModel">
-        <option value="gemini-flash-latest">Flash（標準・常に最新版）</option>
-        <option value="gemini-2.5-flash-lite">Flash-Lite（最速・無料枠が多め）</option>
-        <option value="gemini-pro-latest">Pro（最も賢い・遅め）</option>
-      </select>
+      <select id="gemModel"><option value="gemini-flash-latest">Flash（標準）</option></select>
+      <div class="hint" id="gemModelInfo">キーを入れると、使えるモデルの一覧を読み込みます。</div>
+      <label class="switch" style="margin-top:12px">Google検索で最新情報を調べる<input type="checkbox" id="gemSearch"></label>
+      <div class="hint">天気・ニュースなど最新の情報が必要な質問のときに、Geminiが自分で検索して答えます。</div>
       <div class="hint">Googleにつながらないネットワークでは使えません。その場合はモバイル通信に切り替えてください。</div>
     </div>
     <label class="switch">起動したらすぐ聞き取る<input type="checkbox" id="autoListen"></label>
@@ -307,6 +306,7 @@ input[type=range]{width:100%;accent-color:var(--line);margin:4px 0 0}
       <button type="button" class="txt-btn" id="voiceTest">試聴</button></div>
       <div class="hint">「端末の標準」はiPhoneの読み上げ設定の声を使います。一覧にない声（Siriの声など）はWebアプリからは選べません。</div>
       <div class="hint" id="voiceInfo"></div></div>
+    <div class="f"><label for="area">住んでいる地域（天気などの質問に使います）</label><input type="text" id="area" placeholder="例：福島県会津若松市"></div>
     <div class="f"><label for="hush">話し終わりを待つ時間 <span id="hushVal"></span></label><input type="range" id="hush" min="0.6" max="3" step="0.1"></div>
     <div class="f"><label for="rate">話す速さ <span id="rateVal"></span></label><input type="range" id="rate" min="0.9" max="1.6" step="0.05"></div>
     <div class="f"><label for="pitch">声の高さ <span id="pitchVal"></span></label><input type="range" id="pitch" min="0.7" max="1.4" step="0.05"></div>
@@ -344,7 +344,7 @@ const BASE_PROMPT =
   "変更箇所だけで足りる場合は、どこを差し替えるかを明記してください。" +
   "確信がない内容は推測だと明示してください。";
 const HISTORY_TURNS = 6;
-const APP_VERSION = "2.2（Gemini対応）";
+const APP_VERSION = "2.3（Gemini安定化・検索）";
 
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
@@ -701,7 +701,7 @@ $("#kbBtn").addEventListener("click", () => {
 
 /* ══ 設定 ══ */
 const dlg = $("#settings");
-$("#openSettings").addEventListener("click", () => { syncInfo(); speech.fill(); dlg.showModal(); });
+$("#openSettings").addEventListener("click", () => { syncInfo(); speech.fill(); if (brain() === "gemini" && !gemModels.length) loadGemModels(); dlg.showModal(); });
 dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
 PROJECTS.forEach(p => $("#project").add(new Option(p.name, p.key)));
 MODELS.forEach(m => $("#model").add(new Option(m.label, m.base)));
@@ -726,13 +726,47 @@ $("#model").addEventListener("change", e => { store.set("aibo:model", e.target.v
 $("#speakOn").addEventListener("change", e => store.set("aibo:speak", e.target.checked));
 $("#brain").value = store.get("aibo:brain", "local");
 $("#gemKey").value = store.get("aibo:gemkey", "");
-$("#gemModel").value = store.get("aibo:gemmodel", "gemini-flash-latest");
+$("#gemSearch").checked = store.get("aibo:gemsearch", true);
+$("#gemSearch").addEventListener("change", e => store.set("aibo:gemsearch", e.target.checked));
+$("#area").value = store.get("aibo:area", "");
+$("#area").addEventListener("input", e => store.set("aibo:area", e.target.value.trim()));
+let gemModels = store.get("aibo:gemmodels", []);   // このキーで使えるモデル名
+function fillGemModels(){
+  const sel = $("#gemModel"), cur = store.get("aibo:gemmodel", "gemini-flash-latest");
+  const list = gemModels.length ? gemModels : [{ id:"gemini-flash-latest", name:"Flash（標準）" }];
+  sel.innerHTML = ""; list.forEach(m => sel.add(new Option(m.name, m.id)));
+  sel.value = list.some(m => m.id === cur) ? cur : list[0].id;
+}
+// APIから、このキーで文章生成に使えるGeminiの一覧を取得する
+async function loadGemModels(){
+  if (!gemKey()) return;
+  $("#gemModelInfo").textContent = "モデルの一覧を読み込んでいます…";
+  try {
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers:{ "x-goog-api-key":gemKey() } });
+    if (!r.ok) throw new Error(gemErr(r.status, await r.text()));
+    const j = await r.json();
+    gemModels = (j.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map(m => ({ id:m.name.replace(/^models\//, ""), name:m.displayName || m.name }))
+      .filter(m => /^gemini/.test(m.id) && !/(embedding|image|tts|audio|live|robotics|computer|vision|exp)/i.test(m.id));
+    const rank = id => /flash-latest$/.test(id) ? 0 : /flash-lite-latest$/.test(id) ? 1 : /pro-latest$/.test(id) ? 2 : /flash-lite/.test(id) ? 4 : /flash/.test(id) ? 3 : 5;
+    gemModels.sort((a, b) => rank(a.id) - rank(b.id) || b.id.localeCompare(a.id));
+    store.set("aibo:gemmodels", gemModels);
+    fillGemModels();
+    $("#gemModelInfo").textContent = `使えるモデル：${gemModels.length}件。混雑時は自動で別のモデルに切り替えます。`;
+  } catch (e){
+    $("#gemModelInfo").textContent = "一覧を読み込めませんでした：" + e.message;
+  }
+}
+fillGemModels();
 function brainFields(){ $("#localFields").hidden = brain() !== "local"; $("#gemFields").hidden = brain() !== "gemini"; }
 brainFields();
 let brainDirty = false;
 $("#brain").addEventListener("change", e => { store.set("aibo:brain", e.target.value); brainFields(); brainDirty = true; });
 $("#gemKey").addEventListener("input", e => { store.set("aibo:gemkey", e.target.value.trim()); gemReady = false; brainDirty = true; });
 $("#gemModel").addEventListener("change", e => store.set("aibo:gemmodel", e.target.value));
+$("#gemKey").addEventListener("change", loadGemModels);
+$("#brain").addEventListener("change", () => { if (brain() === "gemini" && !gemModels.length) loadGemModels(); });
 // 設定を閉じたとき、頭脳やキーが変わっていれば切り替える
 dlg.addEventListener("close", () => {
   if (!brainDirty || phase === "busy" || phase === "loading") return;
@@ -849,11 +883,20 @@ function setInput(){
   sb.disabled = busy ? false : !(ready && $("#input").value.trim());
   $("#tag").textContent = convo ? "会話" : TAGS[phase];
 }
+function nowText(){
+  const d = new Date(), w = "日月火水木金土"[d.getDay()];
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${w}）${d.getHours()}時${pad(d.getMinutes(), 2)}分`;
+}
 function systemPrompt(){
   const p = PROJECTS.find(x => x.key === projectKey), memo = $("#memo").value.trim();
   let s = BASE_PROMPT;
   if (p?.ctx) s += "\n\n相談中のアプリ：" + p.ctx;
   if (memo) s += "\n補足メモ：" + memo;
+  s += "\n\n開発の相談が中心ですが、日常の質問にも普通に答えてください。";
+  s += "\n現在日時：" + nowText();
+  const area = $("#area").value.trim();
+  if (area) s += "\nユーザーの地域：" + area + "（天気や近くの情報を聞かれたらこの地域として答える）";
+  if (brain() === "gemini" && $("#gemSearch").checked) s += "\n天気・ニュース・営業時間など最新の情報が必要なときは、Google検索を使って調べてから答えてください。";
   if (convo) s += "\n\n今は音声で会話しています。前置きなしで、話し言葉の1〜2文で答えてください。記号や箇条書きは使わないでください。コードは本当に必要なときだけ短く示してください。";
   return s;
 }
@@ -868,7 +911,8 @@ function gemErr(code, t){
   if (/API key not valid|API_KEY_INVALID/i.test(msg)) return "APIキーが正しくありません。設定で確認してください。";
   if (code === 403) return "このAPIキーでは使えません。キーを確認してください。";
   if (code === 404) return "選んだGeminiのモデルが見つかりません。設定で別のモデルを選んでください。";
-  if (code === 429) return "無料枠の回数制限に達しました。少し待つか、設定でFlash-Liteを選んでください。";
+  if (code === 429) return "無料枠の回数制限に達しました。1分ほど待ってから話しかけてください。";
+  if (code === 503 || code === 500) return "Geminiが混雑していて、どのモデルも応答しませんでした。少し待ってから試してください。";
   return `Geminiでエラーが発生しました（${code}）${msg ? "：" + msg : ""}`;
 }
 async function* geminiStream(messages, max){
@@ -882,21 +926,41 @@ async function* geminiStream(messages, max){
     if (last && last.role === role) last.parts[0].text += "\n" + m.content;   // 同じ話者が続いたらまとめる
     else contents.push({ role, parts:[{ text:m.content }] });
   }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${$("#gemModel").value}:streamGenerateContent?alt=sse`;
-  const body = fast => JSON.stringify({
+  const primary = $("#gemModel").value;
+  // 混雑・上限・見つからないときに順に試す予備のモデル
+  const backups = ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    .filter(id => id !== primary && (!gemModels.length || gemModels.some(m => m.id === id)));
+  let fast = true, search = $("#gemSearch").checked;
+  const body = () => JSON.stringify({
     systemInstruction:{ parts:[{ text:sys }] }, contents,
+    ...(search ? { tools:[{ google_search:{} }] } : {}),
     generationConfig:{ temperature:0.4, maxOutputTokens:max, ...(fast ? { thinkingConfig:{ thinkingBudget:0 } } : {}) },
   });
   gemAbort = new AbortController();
-  const req = b => fetch(url, { method:"POST", headers:{ "Content-Type":"application/json", "x-goog-api-key":gemKey() }, body:b, signal:gemAbort.signal });
-  let res;
+  const req = model => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+    { method:"POST", headers:{ "Content-Type":"application/json", "x-goog-api-key":gemKey() }, body:body(), signal:gemAbort.signal });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  let res, lastErr = "";
   try {
-    res = await req(body(true));                                  // 考える時間を省いて速く答えさせる
-    if (res.status === 400){
-      const t = await res.text();
-      if (/thinking/i.test(t)) res = await req(body(false));      // 省けないモデルなら通常どおり
-      else throw new Error(gemErr(400, t));
+    const queue = [primary, primary, ...backups];   // 同じモデルで1回だけ再試行してから切り替える
+    for (let k = 0; k < queue.length; k++){
+      const model = queue[k];
+      if (k > 0) status("再試行中", model === primary ? "混雑しているので、もう一度試しています" : `混雑のため ${model} に切り替えています`);
+      res = await req(model);
+      if (res.status === 400){
+        const t = await res.text();
+        if (fast && /thinking/i.test(t)){ fast = false; k--; continue; }         // 考える時間を省けないモデル
+        if (search && /tool|search|grounding/i.test(t)){ search = false; k--; continue; }   // 検索が使えないモデル
+        throw new Error(gemErr(400, t));
+      }
+      if ([404, 429, 500, 503].includes(res.status)){
+        lastErr = gemErr(res.status, await res.text());
+        if (k === 0) await wait(700);
+        continue;
+      }
+      break;
     }
+    if (!res.ok && lastErr) throw new Error(lastErr);
   } catch (e){
     if (e.name === "AbortError") return;
     if (e instanceof TypeError) throw new Error("Googleに接続できませんでした。このネットワークではGoogleが使えない可能性があります。モバイル通信に切り替えるか、設定で「端末内」に戻してください。");
