@@ -249,7 +249,8 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
     <div class="f"><label for="voiceSel">読み上げの声</label>
       <div class="row" style="flex-wrap:nowrap"><select id="voiceSel" style="flex:1"></select>
       <button type="button" class="txt-btn" id="voiceTest">試聴</button></div>
-      <div class="hint">「端末の標準」はiPhoneの読み上げ設定の声を使います。一覧にない声（Siriの声など）はWebアプリからは選べません。</div></div>
+      <div class="hint">「端末の標準」はiPhoneの読み上げ設定の声を使います。一覧にない声（Siriの声など）はWebアプリからは選べません。</div>
+      <div class="hint" id="voiceInfo"></div></div>
     <div class="row">
       <button type="button" class="txt-btn" id="rebootBtn">このモデルで再起動</button>
       <button type="button" class="txt-btn danger" id="clearBtn">このアプリの会話を消去</button>
@@ -747,7 +748,7 @@ let rec = null, listening = false;
 const speech = (() => {
   const syn = window.speechSynthesis;
   let spoken = 0, pending = 0, idle = null, beat = null;
-  const jaVoices = () => (syn?.getVoices() || []).filter(v => /^ja/i.test(v.lang));
+  const jaVoices = () => (syn?.getVoices() || []).filter(v => /^ja|[-_]JP/i.test(v.lang) || /Kyoko|O-?ren|Otoya|Hattori/i.test(v.name));
   // 選んだ声。未選択なら声を指定せず、端末の標準の声に任せる
   const chosen = () => { const id = store.get("aibo:voice", ""); return id ? jaVoices().find(v => v.voiceURI === id) || null : null; };
   function fillVoices(){
@@ -755,7 +756,11 @@ const speech = (() => {
     sel.innerHTML = ""; sel.add(new Option("端末の標準", ""));
     jaVoices().forEach(v => sel.add(new Option(v.name + (v.localService ? "" : "（通信）"), v.voiceURI)));
     sel.value = [...sel.options].some(o => o.value === cur) ? cur : "";
+    const all = syn?.getVoices() || [];
+    $("#voiceInfo").textContent = `この端末がブラウザに渡している声：日本語 ${jaVoices().length}件 ／ 全言語 ${all.length}件`;
   }
+  // iPhoneは声の一覧が遅れて届くことがあるので、数秒間取り直す
+  function refill(){ let n = 0; const id = setInterval(() => { fillVoices(); if (++n >= 6) clearInterval(id); }, 500); }
   if (syn){ fillVoices(); syn.addEventListener?.("voiceschanged", fillVoices); }
   $("#voiceSel").addEventListener("change", e => store.set("aibo:voice", e.target.value));
   $("#voiceTest").addEventListener("click", () => {
@@ -800,7 +805,7 @@ const speech = (() => {
     },
     drained(){ return pending === 0 ? Promise.resolve() : new Promise(r => idle = r); },
     stop(){ syn?.cancel(); pending = 0; clearInterval(beat); beat = null; if (idle){ const f = idle; idle = null; f(); } },
-    fill: fillVoices,
+    fill(){ fillVoices(); refill(); },
     prime(){ if (syn){ const u = new SpeechSynthesisUtterance(""); u.volume = 0; syn.speak(u); } },  // iPhoneはタップ時に一度鳴らす必要がある
   };
 })();
