@@ -185,6 +185,7 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
 .f select option{background:#04182a}
 .f textarea{min-height:76px;resize:vertical;font-size:14px;line-height:1.55}
 .f .hint{font-size:.66rem;color:var(--soft);margin-top:6px;line-height:1.6}
+input[type=range]{width:100%;accent-color:var(--line);margin:4px 0 0}
 .switch{display:flex;justify-content:space-between;align-items:center;font-size:.82rem}
 .switch input{appearance:none;-webkit-appearance:none;width:44px;height:22px;position:relative;cursor:pointer;margin:0;
   background:rgba(70,220,255,.08);box-shadow:inset 0 0 0 1px var(--line-3);transition:background .2s}
@@ -252,6 +253,8 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
       <button type="button" class="txt-btn" id="voiceTest">試聴</button></div>
       <div class="hint">「端末の標準」はiPhoneの読み上げ設定の声を使います。一覧にない声（Siriの声など）はWebアプリからは選べません。</div>
       <div class="hint" id="voiceInfo"></div></div>
+    <div class="f"><label for="rate">話す速さ <span id="rateVal"></span></label><input type="range" id="rate" min="0.9" max="1.6" step="0.05"></div>
+    <div class="f"><label for="pitch">声の高さ <span id="pitchVal"></span></label><input type="range" id="pitch" min="0.7" max="1.4" step="0.05"></div>
     <div class="row">
       <button type="button" class="txt-btn" id="rebootBtn">このモデルで再起動</button>
       <button type="button" class="txt-btn danger" id="clearBtn">このアプリの会話を消去</button>
@@ -286,7 +289,7 @@ const BASE_PROMPT =
   "変更箇所だけで足りる場合は、どこを差し替えるかを明記してください。" +
   "確信がない内容は推測だと明示してください。";
 const HISTORY_TURNS = 6;
-const APP_VERSION = "1.6（起動時に聞き取り）";
+const APP_VERSION = "1.7（会話テンポ改善）";
 
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
@@ -592,6 +595,11 @@ $("#project").value = projectKey;
 $("#model").value = store.get("aibo:model", MODELS[0].base);
 $("#speakOn").checked = store.get("aibo:speak", true);
 $("#autoListen").checked = store.get("aibo:autolisten", true);
+for (const [k, d] of [["rate", 1.25], ["pitch", 1.05]]){
+  const el = $("#" + k), show = () => $("#" + k + "Val").textContent = "×" + Number(el.value).toFixed(2);
+  el.value = store.get("aibo:" + k, d); show();
+  el.addEventListener("input", () => { store.set("aibo:" + k, Number(el.value)); show(); });
+}
 $("#autoListen").addEventListener("change", e => store.set("aibo:autolisten", e.target.checked));
 function loadProject(){
   history = store.get("aibo:hist:" + projectKey, []);
@@ -648,6 +656,8 @@ async function boot(){
     if (engine){ engine.setInitProgressCallback?.(progress); await engine.reload(id); }
     else engine = await webllm.CreateMLCEngine(id, { initProgressCallback: progress });
     loadedId = id; store.set("aibo:booted", true);
+    status("最終調整中", "最初の返答を速くするための準備です");
+    try { await engine.chat.completions.create({ messages:[{ role:"system", content:BASE_PROMPT }, { role:"user", content:"はい" }], max_tokens:1 }); await engine.resetChat?.(); } catch {}
     phase = "ready"; sphere.set("ready"); sphere.pulse(); sphere.wave();
     status("待機中", MODELS.find(m => id.startsWith(m.base))?.short + "モデルで稼働");
     if (!history.length) showEmpty();
@@ -686,7 +696,7 @@ function systemPrompt(){
   let s = BASE_PROMPT;
   if (p?.ctx) s += "\n\n相談中のアプリ：" + p.ctx;
   if (memo) s += "\n補足メモ：" + memo;
-  if (convo) s += "\n\n今は音声で会話しています。話し言葉で、まず2〜3文の短い答えを返してください。コードは本当に必要なときだけ短く示してください。";
+  if (convo) s += "\n\n今は音声で会話しています。前置きなしで、話し言葉の1〜2文で答えてください。記号や箇条書きは使わないでください。コードは本当に必要なときだけ短く示してください。";
   return s;
 }
 async function send(){
@@ -706,8 +716,9 @@ async function send(){
   const talk = convo && $("#speakOn").checked && "speechSynthesis" in window;
   speech.reset();
   try {
-    const messages = [{ role:"system", content:systemPrompt() }, ...history.slice(-HISTORY_TURNS).map(({ role, content }) => ({ role, content }))];
-    const stream = await engine.chat.completions.create({ messages, stream:true, temperature:0.3, max_tokens:1024 });
+    const turns = convo ? 4 : HISTORY_TURNS;   // 会話中は読み込む履歴を減らして返答を速く
+    const messages = [{ role:"system", content:systemPrompt() }, ...history.slice(-turns).map(({ role, content }) => ({ role, content }))];
+    const stream = await engine.chat.completions.create({ messages, stream:true, temperature:0.3, max_tokens: convo ? 180 : 1024 });
     for await (const c of stream){
       const d = c.choices?.[0]?.delta?.content || "";
       if (!d) continue;
@@ -733,7 +744,7 @@ async function send(){
       speech.pump(out, true);
       await speech.drained();
     }
-    if (convo){ setTimeout(() => convo && phase === "ready" && listen(true), 350); }
+    if (convo){ setTimeout(() => convo && phase === "ready" && listen(true), 120); }
     else { sphere.set("ready"); status("待機中", took); }
   }
 }
@@ -772,7 +783,7 @@ const speech = (() => {
     if (!syn) return;
     syn.cancel();
     const u = new SpeechSynthesisUtterance("コアです。この声で読み上げます。");
-    u.lang = "ja-JP"; u.rate = 1.08; const v = chosen(); if (v) u.voice = v;
+    u.lang = "ja-JP"; u.rate = +$("#rate").value; u.pitch = +$("#pitch").value; const v = chosen(); if (v) u.voice = v;
     syn.speak(u);
   });
   // 画面向けの記号を外し、コードは読まずに一言だけ添える
@@ -784,7 +795,7 @@ const speech = (() => {
   function say(text){
     if (!syn) return;
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ja-JP"; u.rate = 1.08; u.pitch = 1; const v = chosen(); if (v) u.voice = v;
+    u.lang = "ja-JP"; u.rate = +$("#rate").value; u.pitch = +$("#pitch").value; const v = chosen(); if (v) u.voice = v;
     pending++;
     if (!beat){
       sphere.set("speak"); status("発話中", "マイクをタップすると会話を終了します");
@@ -803,7 +814,11 @@ const speech = (() => {
       const t = speakable(text);
       let end = spoken;
       if (final) end = t.length;
-      else for (let i = t.length - 1; i >= spoken; i--){ if ("。！？!?\n".includes(t[i])){ end = i + 1; break; } }
+      else {
+        for (let i = t.length - 1; i >= spoken; i--){ if ("。！？!?\n".includes(t[i])){ end = i + 1; break; } }
+        // まだ一言も話していなければ、読点でも区切ってすぐ話し始める
+        if (end === spoken && spoken === 0){ const c = t.indexOf("、", 8); if (c > 0) end = c + 1; }
+      }
       if (end <= spoken) return;
       const seg = t.slice(spoken, end).replace(/\s+/g, " ").trim(); spoken = end;
       if (seg.replace(/[。、！？!?\s]/g, "")) say(seg);
@@ -815,6 +830,17 @@ const speech = (() => {
   };
 })();
 
+let actx = null;
+function chime(freq, len){
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.12, t + .01); g.gain.exponentialRampToValueAtTime(.001, t + len);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + len + .02);
+  } catch {}
+}
 function setListening(on){
   listening = on; $("#micBtn").classList.toggle("live", on);
   $("#micBtn").setAttribute("aria-label", convo ? "会話を終了" : "会話を始める");
@@ -847,10 +873,14 @@ function listen(auto){
   if (!convo) return;
   let heard = false, silentEnd = false;
   rec = new SR(); rec.lang = "ja-JP"; rec.interimResults = true; rec.continuous = false;
+  let hush = null;
   rec.onresult = e => {
-    let txt = "";
-    for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    let txt = "", done = false;
+    for (let i = 0; i < e.results.length; i++){ txt += e.results[i][0].transcript; done = e.results[i].isFinal; }
     $("#input").value = txt; autoGrow(); heard = true; sphere.pulse();
+    // iPhone標準の区切りは遅いので、0.7秒黙ったら話し終えたとみなす
+    clearTimeout(hush);
+    hush = setTimeout(() => { try { rec.stop(); } catch {} }, done ? 150 : 700);
   };
   rec.onerror = e => {
     if (e.error === "aborted") return;
@@ -866,12 +896,14 @@ function listen(auto){
     endConvo("音声入力が止まりました");
   };
   rec.onend = () => {
+    clearTimeout(hush);
+    if (heard) chime(520, .07);
     setListening(false);
     if (!convo) return;
     if (heard && $("#input").value.trim()) send();
     else endConvo(silentEnd ? "しばらく声がなかったので会話を終了しました" : "");
   };
-  try { rec.start(); setListening(true); sphere.wave(); }
+  try { rec.start(); setListening(true); sphere.wave(); chime(880, .06); }
   catch (err){ convo = false; setInput(); auto ? askTap() : addMsg("err", "音声入力を開始できませんでした：" + err.message); }
 }
 function askTap(){
