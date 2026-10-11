@@ -156,6 +156,7 @@ body::before{
 .key.primary{color:var(--bg);background:linear-gradient(180deg,#8eeaff,var(--line));box-shadow:none}
 .key.primary:disabled{color:var(--line);background:linear-gradient(180deg,rgba(70,220,255,.12),rgba(70,220,255,.04));box-shadow:inset 0 0 0 1px var(--line-2)}
 .key.stop{color:#1a0a00;background:repeating-linear-gradient(-45deg,var(--warn) 0 6px,#ffb27a 6px 12px)}
+.key.convo{color:var(--bg);background:linear-gradient(180deg,#8eeaff,var(--line));box-shadow:none}
 .key.live{color:var(--bg);background:var(--hi);animation:glow 1.1s ease-in-out infinite}
 @keyframes glow{50%{background:var(--line)}}
 :focus-visible{outline:2px solid var(--hi);outline-offset:2px}
@@ -221,7 +222,7 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
   <div class="log-wrap"><div id="log"></div></div>
 
   <div class="dock">
-    <button class="key" id="micBtn" disabled aria-label="音声で入力">
+    <button class="key" id="micBtn" disabled aria-label="会話を始める">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6"/></svg>
     </button>
     <div class="field"><textarea id="input" rows="1" placeholder="起動すると質問できます" disabled></textarea></div>
@@ -244,7 +245,7 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
       <textarea id="memo" placeholder="使っている技術や進み具合。毎回AIに伝えます&#10;例：Three.js r128、スマホ縦画面、ブロック破壊まで実装済み"></textarea></div>
     <div class="f"><label for="model">モデル</label><select id="model"></select>
       <div class="hint">iPhoneで落ちる場合は「軽量」を選んでください。</div></div>
-    <label class="switch">話し終えたら自動で送信<input type="checkbox" id="autoSend"></label>
+    <label class="switch">会話中は回答を読み上げる<input type="checkbox" id="speakOn"></label>
     <div class="row">
       <button type="button" class="txt-btn" id="rebootBtn">このモデルで再起動</button>
       <button type="button" class="txt-btn danger" id="clearBtn">このアプリの会話を消去</button>
@@ -313,6 +314,7 @@ const sphere = (() => {
     ready:  { speed:.16, radius:1,   bright:.9,  jitter:0,    gim:.6,  scan:0,  frame:1.1,  col:[70,220,255] },
     think:  { speed:.8,  radius:1.03,bright:1,   jitter:0,    gim:1,   scan:.6, frame:1.0,  col:[120,230,255] },
     listen: { speed:.25, radius:1.1, bright:1.05,jitter:.045, gim:.85, scan:0,  frame:.96,  col:[200,247,255] },
+    speak:  { speed:.3,  radius:1.04,bright:1,   jitter:0,    gim:.85, scan:0,  frame:1.04, col:[150,236,255] },
     error:  { speed:.05, radius:.88, bright:.75, jitter:.015, gim:.25, scan:0,  frame:1.2,  col:[255,84,104] },
   };
   const S = { mode:"off", assemble:1, energy:0, rot:0, tilt:.36, vrot:0, vtilt:0, progress:0, gimRot:0, scanA:0, ...structuredClone(MODES.off) };
@@ -513,6 +515,7 @@ const sphere = (() => {
 })();
 
 const TAGS = { off:"待機", loading:"起動中", ready:"稼働", busy:"演算", error:"異常" };
+let convo = false;          // 会話モード（聞く→答える→読み上げる→また聞く）
 function status(main, sub, err){
   $("#sMain").textContent = main; $("#sSub").textContent = sub || "";
   $("#status").classList.toggle("err", !!err);
@@ -555,7 +558,7 @@ function scrollDown(force){
 function showEmpty(){
   const p = PROJECTS.find(x => x.key === projectKey);
   $("#log").innerHTML = `<div class="empty">${engine
-    ? `相談先：${esc(p.name)}<br>入力するか、マイクで話しかけてください`
+    ? `相談先：${esc(p.name)}<br>入力するか、マイクをタップして会話を始めてください`
     : `コアをタップすると起動します<br>初回のみモデルのダウンロードに数分かかります`}</div>`;
 }
 function renderHistory(){
@@ -580,7 +583,7 @@ PROJECTS.forEach(p => $("#project").add(new Option(p.name, p.key)));
 MODELS.forEach(m => $("#model").add(new Option(m.label, m.base)));
 $("#project").value = projectKey;
 $("#model").value = store.get("aibo:model", MODELS[0].base);
-$("#autoSend").checked = store.get("aibo:autosend", true);
+$("#speakOn").checked = store.get("aibo:speak", true);
 function loadProject(){
   history = store.get("aibo:hist:" + projectKey, []);
   $("#memo").value = store.get("aibo:memo:" + projectKey, "");
@@ -589,7 +592,7 @@ function loadProject(){
 $("#project").addEventListener("change", e => { projectKey = e.target.value; store.set("aibo:project", projectKey); loadProject(); });
 $("#memo").addEventListener("input", e => store.set("aibo:memo:" + projectKey, e.target.value));
 $("#model").addEventListener("change", e => { store.set("aibo:model", e.target.value); syncInfo(); });
-$("#autoSend").addEventListener("change", e => store.set("aibo:autosend", e.target.checked));
+$("#speakOn").addEventListener("change", e => store.set("aibo:speak", e.target.checked));
 $("#rebootBtn").addEventListener("click", () => { dlg.close(); boot(); });
 $("#clearBtn").addEventListener("click", () => {
   if (phase === "busy" || !confirm("このアプリの会話を消去しますか？")) return;
@@ -658,19 +661,22 @@ const ICON_SEND = $("#sendBtn").innerHTML;
 const ICON_STOP = `<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" fill="currentColor"/></svg>`;
 function setInput(){
   const ready = phase === "ready", busy = phase === "busy";
-  $("#input").disabled = !ready; $("#micBtn").disabled = !ready;
+  $("#input").disabled = !ready || convo;
+  $("#micBtn").disabled = !engine || phase === "loading" || (busy && !convo);
+  $("#micBtn").classList.toggle("convo", convo);
   $("#input").placeholder = engine ? "質問を入力" : "起動すると質問できます";
   const sb = $("#sendBtn");
   sb.classList.toggle("stop", busy); sb.innerHTML = busy ? ICON_STOP : ICON_SEND;
   sb.setAttribute("aria-label", busy ? "回答を止める" : "送信");
   sb.disabled = busy ? false : !(ready && $("#input").value.trim());
-  $("#tag").textContent = TAGS[phase];
+  $("#tag").textContent = convo ? "会話" : TAGS[phase];
 }
 function systemPrompt(){
   const p = PROJECTS.find(x => x.key === projectKey), memo = $("#memo").value.trim();
   let s = BASE_PROMPT;
   if (p?.ctx) s += "\n\n相談中のアプリ：" + p.ctx;
   if (memo) s += "\n補足メモ：" + memo;
+  if (convo) s += "\n\n今は音声で会話しています。話し言葉で、まず2〜3文の短い答えを返してください。コードは本当に必要なときだけ短く示してください。";
   return s;
 }
 async function send(){
@@ -687,6 +693,8 @@ async function send(){
   el.querySelector(".meta b").textContent = "応答 " + pad(history.filter(x => x.role === "assistant").length + 1, 3);
   body.classList.add("cursor");
   let out = "", n = 0; const t0 = performance.now();
+  const talk = convo && $("#speakOn").checked && "speechSynthesis" in window;
+  speech.reset();
   try {
     const messages = [{ role:"system", content:systemPrompt() }, ...history.slice(-HISTORY_TURNS).map(({ role, content }) => ({ role, content }))];
     const stream = await engine.chat.completions.create({ messages, stream:true, temperature:0.3, max_tokens:1024 });
@@ -696,6 +704,7 @@ async function send(){
       out += d; n++;
       body.innerHTML = render(out);
       if (n % 3 === 0) sphere.pulse();
+      if (talk) speech.pump(out, false);
       const sec = (performance.now() - t0) / 1000, tps = sec > 0 ? n / sec : 0;
       $("#tTps").textContent = tps.toFixed(1).padStart(4, "0") + " t/s";
       status("回答中", `${n} トークン`);
@@ -708,54 +717,134 @@ async function send(){
     body.classList.remove("cursor");
     if (out){ ah.content = out; history.push(ah); }
     store.set("aibo:hist:" + projectKey, history.slice(-40));
-    phase = "ready"; sphere.set("ready"); setInput();
-    status("待機中", `前回の回答 ${((performance.now() - t0) / 1000).toFixed(1)}秒 ／ ${n} トークン`);
+    phase = "ready"; setInput();
+    const took = `前回の回答 ${((performance.now() - t0) / 1000).toFixed(1)}秒 ／ ${n} トークン`;
+    if (talk && out && convo){
+      speech.pump(out, true);
+      await speech.drained();
+    }
+    if (convo){ setTimeout(() => convo && phase === "ready" && listen(true), 350); }
+    else { sphere.set("ready"); status("待機中", took); }
   }
 }
-$("#sendBtn").addEventListener("click", () => phase === "busy" ? engine?.interruptGenerate() : send());
+$("#sendBtn").addEventListener("click", () => {
+  if (phase === "busy"){ engine?.interruptGenerate(); speech.stop(); }
+  else send();
+});
 $("#input").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); send(); } });
 function autoGrow(){ const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, innerHeight * .3) + "px"; }
 $("#input").addEventListener("input", () => { autoGrow(); setInput(); });
 
-/* ══ 音声入力 ══ */
+/* ══ 会話（音声入力＋読み上げ） ══ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false;
+
+// 読み上げ：回答を文ごとに区切り、生成と並行して話す
+const speech = (() => {
+  const syn = window.speechSynthesis;
+  let spoken = 0, pending = 0, idle = null, beat = null, voice = null;
+  const pickVoice = () => {
+    const vs = syn?.getVoices().filter(v => /^ja/i.test(v.lang)) || [];
+    voice = vs.find(v => /enhanced|premium|拡張|プレミアム/i.test(v.name)) || vs.find(v => /Kyoko|O-ren|Otoya/i.test(v.name)) || vs[0] || null;
+  };
+  if (syn){ pickVoice(); syn.addEventListener?.("voiceschanged", pickVoice); }
+  // 画面向けの記号を外し、コードは読まずに一言だけ添える
+  const speakable = t => {
+    t = t.replace(/```[\s\S]*?```/g, "。コードは画面に表示しました。");
+    const open = t.indexOf("```"); if (open >= 0) t = t.slice(0, open);
+    return t.replace(/`([^`]*)`/g, "$1").replace(/\*\*/g, "").replace(/^#+\s*/gm, "").replace(/^\s*[-*・]\s+/gm, "");
+  };
+  function say(text){
+    if (!syn) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP"; u.rate = 1.08; u.pitch = 1; if (voice) u.voice = voice;
+    pending++;
+    if (!beat){
+      sphere.set("speak"); status("発話中", "マイクをタップすると会話を終了します");
+      beat = setInterval(() => sphere.pulse(), 190);
+    }
+    u.onend = u.onerror = () => {
+      if (--pending > 0) return;
+      clearInterval(beat); beat = null;
+      if (idle){ const f = idle; idle = null; f(); }
+    };
+    syn.speak(u);
+  }
+  return {
+    reset(){ spoken = 0; },
+    pump(text, final){
+      const t = speakable(text);
+      let end = spoken;
+      if (final) end = t.length;
+      else for (let i = t.length - 1; i >= spoken; i--){ if ("。！？!?\n".includes(t[i])){ end = i + 1; break; } }
+      if (end <= spoken) return;
+      const seg = t.slice(spoken, end).replace(/\s+/g, " ").trim(); spoken = end;
+      if (seg.replace(/[。、！？!?\s]/g, "")) say(seg);
+    },
+    drained(){ return pending === 0 ? Promise.resolve() : new Promise(r => idle = r); },
+    stop(){ syn?.cancel(); pending = 0; clearInterval(beat); beat = null; if (idle){ const f = idle; idle = null; f(); } },
+    prime(){ if (syn){ const u = new SpeechSynthesisUtterance(""); u.volume = 0; syn.speak(u); } },  // iPhoneはタップ時に一度鳴らす必要がある
+  };
+})();
+
 function setListening(on){
   listening = on; $("#micBtn").classList.toggle("live", on);
-  $("#micBtn").setAttribute("aria-label", on ? "聞き取りを止める" : "音声で入力");
-  if (on){ sphere.set("listen"); status("聴取中", "話し終えると自動で止まります"); }
-  else if (phase === "ready"){ sphere.set("ready"); status("待機中", ""); }
+  $("#micBtn").setAttribute("aria-label", convo ? "会話を終了" : "会話を始める");
+  if (on){ sphere.set("listen"); status("聴取中", "話し終えると自動で送信します"); }
 }
-$("#micBtn").addEventListener("click", () => { if (listening){ rec.stop(); return; } startListening(false); });
-function startListening(auto){
+function startConvo(auto){
   if (!SR){ if (!auto) addMsg("err", "このブラウザは音声入力に対応していません。iPhoneはSafari、パソコンはChromeかEdgeで開いてください。"); return; }
-  const base = $("#input").value.trim();
-  let heard = false;
+  convo = true; speech.prime(); setInput();
+  addMsg("note", "会話を開始しました");
+  listen(auto);
+}
+function endConvo(msg){
+  if (!convo) return;
+  convo = false;
+  try { rec?.abort(); } catch {}
+  speech.stop();
+  if (phase === "busy") engine?.interruptGenerate();
+  setListening(false); setInput();
+  sphere.set(phase === "error" ? "error" : "ready");
+  status("待機中", msg || "会話を終了しました");
+  addMsg("note", "会話を終了しました");
+}
+$("#micBtn").addEventListener("click", () => convo ? endConvo() : startConvo(false));
+
+function listen(auto){
+  if (!convo) return;
+  let heard = false, silentEnd = false;
   rec = new SR(); rec.lang = "ja-JP"; rec.interimResults = true; rec.continuous = false;
   rec.onresult = e => {
     let txt = "";
     for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
-    $("#input").value = (base ? base + " " : "") + txt; autoGrow(); setInput();
-    heard = true; sphere.pulse();
+    $("#input").value = txt; autoGrow(); heard = true; sphere.pulse();
   };
   rec.onerror = e => {
-    if (auto && /not-allowed|service-not-allowed/.test(e.error)){ askTap(); return; }
+    if (e.error === "aborted") return;
+    if (e.error === "no-speech"){ silentEnd = true; return; }
+    if (auto && /not-allowed|service-not-allowed/.test(e.error)){ convo = false; setInput(); askTap(); return; }
     const m = {
       "not-allowed":"マイクが許可されていません。ブラウザの設定でこのサイトのマイクを許可してください。",
       "service-not-allowed":"マイクが許可されていません。ブラウザの設定でこのサイトのマイクを許可してください。",
       "network":"音声認識サービスに接続できませんでした。通信環境を確認してください。",
-      "no-speech":"音声が聞き取れませんでした。",
       "audio-capture":"マイクが見つかりません。",
     }[e.error];
-    if (e.error !== "aborted") addMsg("err", m || "音声入力でエラーが発生しました：" + e.error);
+    addMsg("err", m || "音声入力でエラーが発生しました：" + e.error);
+    endConvo("音声入力が止まりました");
   };
-  rec.onend = () => { setListening(false); if (heard && $("#autoSend").checked) send(); };
+  rec.onend = () => {
+    setListening(false);
+    if (!convo) return;
+    if (heard && $("#input").value.trim()) send();
+    else endConvo(silentEnd ? "しばらく声がなかったので会話を終了しました" : "");
+  };
   try { rec.start(); setListening(true); sphere.wave(); }
-  catch (err){ auto ? askTap() : addMsg("err", "音声入力を開始できませんでした：" + err.message); }
+  catch (err){ convo = false; setInput(); auto ? askTap() : addMsg("err", "音声入力を開始できませんでした：" + err.message); }
 }
 function askTap(){
   setListening(false);
-  status("マイクをタップ", "タップすると話しかけられます");
+  status("マイクをタップ", "タップすると会話を始めます");
   $("#micBtn").classList.add("live");
   $("#micBtn").addEventListener("click", () => $("#micBtn").classList.remove("live"), { once:true });
 }
@@ -765,7 +854,7 @@ const voiceLaunch = new URLSearchParams(location.search).has("voice");   // Siri
 loadProject(); setInput();
 checkGPU().then(ok => { $("#tGpu").textContent = ok ? "WebGPU " + (f16 ? "16bit" : "32bit") : "非対応"; });
 if (voiceLaunch || store.get("aibo:booted", false)){
-  boot().then(() => { if (voiceLaunch && phase === "ready") startListening(true); });
+  boot().then(() => { if (voiceLaunch && phase === "ready") startConvo(true); });
 }
 </script>
 </body>
