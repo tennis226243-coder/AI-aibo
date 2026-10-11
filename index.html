@@ -344,7 +344,7 @@ const BASE_PROMPT =
   "変更箇所だけで足りる場合は、どこを差し替えるかを明記してください。" +
   "確信がない内容は推測だと明示してください。";
 const HISTORY_TURNS = 6;
-const APP_VERSION = "2.3（Gemini安定化・検索）";
+const APP_VERSION = "2.4（モデル自動判定）";
 
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
@@ -910,7 +910,7 @@ function gemErr(code, t){
   let msg = ""; try { msg = JSON.parse(t).error?.message || ""; } catch {}
   if (/API key not valid|API_KEY_INVALID/i.test(msg)) return "APIキーが正しくありません。設定で確認してください。";
   if (code === 403) return "このAPIキーでは使えません。キーを確認してください。";
-  if (code === 404) return "選んだGeminiのモデルが見つかりません。設定で別のモデルを選んでください。";
+  if (code === 404) return "Geminiのモデルが見つかりませんでした。設定画面を開いて「使えるモデル」の一覧が出るか確認してください。" + (msg ? "\n詳細：" + msg : "");
   if (code === 429) return "無料枠の回数制限に達しました。1分ほど待ってから話しかけてください。";
   if (code === 503 || code === 500) return "Geminiが混雑していて、どのモデルも応答しませんでした。少し待ってから試してください。";
   return `Geminiでエラーが発生しました（${code}）${msg ? "：" + msg : ""}`;
@@ -926,10 +926,14 @@ async function* geminiStream(messages, max){
     if (last && last.role === role) last.parts[0].text += "\n" + m.content;   // 同じ話者が続いたらまとめる
     else contents.push({ role, parts:[{ text:m.content }] });
   }
-  const primary = $("#gemModel").value;
+  if (!gemModels.length) await loadGemModels();
+  const primary = $("#gemModel").value || "gemini-flash-latest";
   // 混雑・上限・見つからないときに順に試す予備のモデル
-  const backups = ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
-    .filter(id => id !== primary && (!gemModels.length || gemModels.some(m => m.id === id)));
+  const known = ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  // 予備：よく使う名前のうち一覧にあるもの＋一覧の上位（一覧が取れていれば必ず実在する名前になる）
+  const backups = [...new Set([...known.filter(id => !gemModels.length || gemModels.some(m => m.id === id)),
+                               ...gemModels.slice(0, 4).map(m => m.id)])].filter(id => id !== primary);
+  const tried = [];
   let fast = true, search = $("#gemSearch").checked;
   const body = () => JSON.stringify({
     systemInstruction:{ parts:[{ text:sys }] }, contents,
@@ -945,6 +949,7 @@ async function* geminiStream(messages, max){
     const queue = [primary, primary, ...backups];   // 同じモデルで1回だけ再試行してから切り替える
     for (let k = 0; k < queue.length; k++){
       const model = queue[k];
+      if (!tried.includes(model)) tried.push(model);
       if (k > 0) status("再試行中", model === primary ? "混雑しているので、もう一度試しています" : `混雑のため ${model} に切り替えています`);
       res = await req(model);
       if (res.status === 400){
@@ -960,7 +965,7 @@ async function* geminiStream(messages, max){
       }
       break;
     }
-    if (!res.ok && lastErr) throw new Error(lastErr);
+    if (!res.ok && lastErr) throw new Error(lastErr + `\n（試したモデル：${tried.join("、")}${gemModels.length ? "" : "／モデル一覧は未取得"}）`);
   } catch (e){
     if (e.name === "AbortError") return;
     if (e instanceof TypeError) throw new Error("Googleに接続できませんでした。このネットワークではGoogleが使えない可能性があります。モバイル通信に切り替えるか、設定で「端末内」に戻してください。");
@@ -1162,7 +1167,9 @@ function startConvo(auto){
     else addMsg("err", "この画面では音声入力が使えません。iPhoneはSafariで開くと使える場合があります。");
     return;
   }
-  convo = true; speech.prime(); setInput();
+  convo = true; speech.prime();
+  $("#typebar").hidden = true; $("#kbBtn").classList.remove("on");
+  setInput();
   addMsg("note", "会話を開始しました");
   listen(auto);
 }
