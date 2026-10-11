@@ -245,6 +245,7 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
       <textarea id="memo" placeholder="使っている技術や進み具合。毎回AIに伝えます&#10;例：Three.js r128、スマホ縦画面、ブロック破壊まで実装済み"></textarea></div>
     <div class="f"><label for="model">モデル</label><select id="model"></select>
       <div class="hint">iPhoneで落ちる場合は「軽量」を選んでください。</div></div>
+    <label class="switch">起動したらすぐ聞き取る<input type="checkbox" id="autoListen"></label>
     <label class="switch">会話中は回答を読み上げる<input type="checkbox" id="speakOn"></label>
     <div class="f"><label for="voiceSel">読み上げの声</label>
       <div class="row" style="flex-wrap:nowrap"><select id="voiceSel" style="flex:1"></select>
@@ -589,6 +590,8 @@ MODELS.forEach(m => $("#model").add(new Option(m.label, m.base)));
 $("#project").value = projectKey;
 $("#model").value = store.get("aibo:model", MODELS[0].base);
 $("#speakOn").checked = store.get("aibo:speak", true);
+$("#autoListen").checked = store.get("aibo:autolisten", true);
+$("#autoListen").addEventListener("change", e => store.set("aibo:autolisten", e.target.checked));
 function loadProject(){
   history = store.get("aibo:hist:" + projectKey, []);
   $("#memo").value = store.get("aibo:memo:" + projectKey, "");
@@ -657,7 +660,7 @@ async function boot(){
   } finally { setInput(); }
 }
 sphere.el.addEventListener("tap", () => {
-  if (phase === "off" || phase === "error") boot();
+  if (phase === "off" || phase === "error") boot().then(afterBoot);
   else { sphere.pulse(); sphere.wave(); }
 });
 
@@ -816,7 +819,11 @@ function setListening(on){
   if (on){ sphere.set("listen"); status("聴取中", "話し終えると自動で送信します"); }
 }
 function startConvo(auto){
-  if (!SR){ if (!auto) addMsg("err", "このブラウザは音声入力に対応していません。iPhoneはSafari、パソコンはChromeかEdgeで開いてください。"); return; }
+  if (!SR){
+    if (auto) status("音声入力を使えません", "この表示モードでは音声認識が提供されていません", true);
+    else addMsg("err", "この画面では音声入力が使えません。iPhoneはSafariで開くと使える場合があります。");
+    return;
+  }
   convo = true; speech.prime(); setInput();
   addMsg("note", "会話を開始しました");
   listen(auto);
@@ -866,19 +873,31 @@ function listen(auto){
   catch (err){ convo = false; setInput(); auto ? askTap() : addMsg("err", "音声入力を開始できませんでした：" + err.message); }
 }
 function askTap(){
-  setListening(false);
-  status("マイクをタップ", "タップすると会話を始めます");
+  convo = false; setListening(false); setInput();
+  status("タップで聞き取り開始", "画面のどこかをタップすると話しかけられます");
   $("#micBtn").classList.add("live");
-  $("#micBtn").addEventListener("click", () => $("#micBtn").classList.remove("live"), { once:true });
+  const cleanup = () => { document.removeEventListener("pointerup", go, true); $("#micBtn").classList.remove("live"); };
+  const go = e => {
+    if (e.target.closest("dialog, #openSettings, #micBtn")) return;   // マイクと設定はそれぞれの操作に任せる
+    cleanup(); startConvo(false);
+  };
+  document.addEventListener("pointerup", go, true);
+  $("#micBtn").addEventListener("click", cleanup, { once:true });
 }
 
 /* ══ 初期化 ══ */
 const voiceLaunch = new URLSearchParams(location.search).has("voice");   // Siriのショートカット用
 loadProject(); setInput();
 checkGPU().then(ok => { $("#tGpu").textContent = ok ? "WebGPU " + (f16 ? "16bit" : "32bit") : "非対応"; });
-if (voiceLaunch || store.get("aibo:booted", false)){
-  boot().then(() => { if (voiceLaunch && phase === "ready") startConvo(true); });
+// 起動が終わったら、そのまま会話（音声入力）を始める
+function afterBoot(){
+  if (phase === "ready" && !convo && (voiceLaunch || $("#autoListen").checked)) startConvo(true);
 }
+if (voiceLaunch || store.get("aibo:booted", false)) boot().then(afterBoot);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") setTimeout(afterBoot, 300);
+  else if (convo) endConvo("アプリを離れたので会話を終了しました");
+});
 </script>
 </body>
 </html>
