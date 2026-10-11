@@ -193,7 +193,7 @@ dialog::backdrop{background:rgba(1,5,10,.65)}
 .sheet header{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;box-shadow:0 1px 0 var(--line-3)}
 .sheet h2{margin:0;font-size:.85rem;font-weight:500;letter-spacing:.4em;color:var(--hi)}
 .f label{display:block;font-size:.72rem;color:var(--soft);margin-bottom:6px}
-.f select,.f textarea{width:100%;font:inherit;font-size:16px;color:var(--hi);border:0;border-radius:0;background:rgba(1,8,14,.7);box-shadow:inset 0 0 0 1px var(--line-3);padding:9px 10px}
+.f select,.f textarea,.f input[type=password]{width:100%;font:inherit;font-size:16px;color:var(--hi);border:0;border-radius:0;background:rgba(1,8,14,.7);box-shadow:inset 0 0 0 1px var(--line-3);padding:9px 10px}
 .f select{-webkit-appearance:none;appearance:none;padding-right:28px;
   background-image:linear-gradient(45deg,transparent 50%,var(--line) 50%),linear-gradient(135deg,var(--line) 50%,transparent 50%);
   background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat}
@@ -284,8 +284,22 @@ input[type=range]{width:100%;accent-color:var(--line);margin:4px 0 0}
     <div class="f"><label for="project">相談するアプリ</label><select id="project"></select></div>
     <div class="f"><label for="memo">このアプリのメモ</label>
       <textarea id="memo" placeholder="使っている技術や進み具合。毎回AIに伝えます&#10;例：Three.js r128、スマホ縦画面、ブロック破壊まで実装済み"></textarea></div>
-    <div class="f"><label for="model">モデル</label><select id="model"></select>
+    <div class="f"><label for="brain">AIの頭脳</label>
+      <select id="brain"><option value="local">端末内（無料・通信なし）</option><option value="gemini">Gemini（高速で賢い・要APIキー）</option></select></div>
+    <div class="f" id="localFields"><label for="model">端末内のモデル</label><select id="model"></select>
       <div class="hint">iPhoneで落ちる場合は「軽量」を選んでください。</div></div>
+    <div class="f" id="gemFields">
+      <label for="gemKey">Gemini APIキー</label>
+      <input type="password" id="gemKey" autocomplete="off" spellcheck="false" placeholder="AIza で始まるキー">
+      <div class="hint">Google AI Studio（aistudio.google.com/apikey）で無料で発行できます。キーはこの端末にだけ保存され、他の人には見えません。</div>
+      <label for="gemModel" style="margin-top:12px">Geminiのモデル</label>
+      <select id="gemModel">
+        <option value="gemini-flash-latest">Flash（標準・常に最新版）</option>
+        <option value="gemini-2.5-flash-lite">Flash-Lite（最速・無料枠が多め）</option>
+        <option value="gemini-pro-latest">Pro（最も賢い・遅め）</option>
+      </select>
+      <div class="hint">Googleにつながらないネットワークでは使えません。その場合はモバイル通信に切り替えてください。</div>
+    </div>
     <label class="switch">起動したらすぐ聞き取る<input type="checkbox" id="autoListen"></label>
     <label class="switch">会話中は回答を読み上げる<input type="checkbox" id="speakOn"></label>
     <div class="f"><label for="voiceSel">読み上げの声</label>
@@ -293,6 +307,7 @@ input[type=range]{width:100%;accent-color:var(--line);margin:4px 0 0}
       <button type="button" class="txt-btn" id="voiceTest">試聴</button></div>
       <div class="hint">「端末の標準」はiPhoneの読み上げ設定の声を使います。一覧にない声（Siriの声など）はWebアプリからは選べません。</div>
       <div class="hint" id="voiceInfo"></div></div>
+    <div class="f"><label for="hush">話し終わりを待つ時間 <span id="hushVal"></span></label><input type="range" id="hush" min="0.6" max="3" step="0.1"></div>
     <div class="f"><label for="rate">話す速さ <span id="rateVal"></span></label><input type="range" id="rate" min="0.9" max="1.6" step="0.05"></div>
     <div class="f"><label for="pitch">声の高さ <span id="pitchVal"></span></label><input type="range" id="pitch" min="0.7" max="1.4" step="0.05"></div>
     <div class="row">
@@ -329,13 +344,17 @@ const BASE_PROMPT =
   "変更箇所だけで足りる場合は、どこを差し替えるかを明記してください。" +
   "確信がない内容は推測だと明示してください。";
 const HISTORY_TURNS = 6;
-const APP_VERSION = "2.0（全画面コア）";
+const APP_VERSION = "2.2（Gemini対応）";
 
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
   set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
 };
 let webllm = null, engine = null, loadedId = null, f16 = false;
+let gemReady = false, gemAbort = null;
+const brain = () => $("#brain").value;
+const gemKey = () => $("#gemKey").value.trim();
+const brainUp = () => brain() === "gemini" ? gemReady : !!engine;
 let phase = "off";
 let projectKey = store.get("aibo:project", "general"), history = [];
 const pad = (n, w) => String(Math.abs(Math.round(n))).padStart(w, "0");
@@ -571,7 +590,7 @@ const sphere = (() => {
 })();
 
 const TAGS = { off:"待機", loading:"起動中", ready:"稼働", busy:"演算", error:"異常" };
-let convo = false;          // 会話モード（聞く→答える→読み上げる→また聞く）
+let convo = false, skipTalk = false;          // 会話モード（聞く→答える→読み上げる→また聞く）
 function status(main, sub, err){
   $("#sMain").textContent = main; $("#sSub").textContent = sub || "";
   $("#status").classList.toggle("err", !!err);
@@ -633,7 +652,7 @@ function scrollDown(force){
 }
 function showEmpty(){
   const p = PROJECTS.find(x => x.key === projectKey);
-  $("#log").innerHTML = `<div class="empty">${engine
+  $("#log").innerHTML = `<div class="empty">${brainUp()
     ? `相談先：${esc(p.name)}<br>入力するか、マイクをタップして会話を始めてください`
     : `コアをタップすると起動します<br>初回のみモデルのダウンロードに数分かかります`}</div>`;
   if (!history.length) caption("", engine ? "" : "", false);
@@ -690,8 +709,8 @@ $("#project").value = projectKey;
 $("#model").value = store.get("aibo:model", MODELS[0].base);
 $("#speakOn").checked = store.get("aibo:speak", true);
 $("#autoListen").checked = store.get("aibo:autolisten", true);
-for (const [k, d] of [["rate", 1.25], ["pitch", 1.05]]){
-  const el = $("#" + k), show = () => $("#" + k + "Val").textContent = "×" + Number(el.value).toFixed(2);
+for (const [k, d] of [["rate", 1.25], ["pitch", 1.05], ["hush", 1.5]]){
+  const el = $("#" + k), show = () => $("#" + k + "Val").textContent = k === "hush" ? Number(el.value).toFixed(1) + "秒" : "×" + Number(el.value).toFixed(2);
   el.value = store.get("aibo:" + k, d); show();
   el.addEventListener("input", () => { store.set("aibo:" + k, Number(el.value)); show(); });
 }
@@ -705,12 +724,34 @@ $("#project").addEventListener("change", e => { projectKey = e.target.value; sto
 $("#memo").addEventListener("input", e => store.set("aibo:memo:" + projectKey, e.target.value));
 $("#model").addEventListener("change", e => { store.set("aibo:model", e.target.value); syncInfo(); });
 $("#speakOn").addEventListener("change", e => store.set("aibo:speak", e.target.checked));
+$("#brain").value = store.get("aibo:brain", "local");
+$("#gemKey").value = store.get("aibo:gemkey", "");
+$("#gemModel").value = store.get("aibo:gemmodel", "gemini-flash-latest");
+function brainFields(){ $("#localFields").hidden = brain() !== "local"; $("#gemFields").hidden = brain() !== "gemini"; }
+brainFields();
+let brainDirty = false;
+$("#brain").addEventListener("change", e => { store.set("aibo:brain", e.target.value); brainFields(); brainDirty = true; });
+$("#gemKey").addEventListener("input", e => { store.set("aibo:gemkey", e.target.value.trim()); gemReady = false; brainDirty = true; });
+$("#gemModel").addEventListener("change", e => store.set("aibo:gemmodel", e.target.value));
+// 設定を閉じたとき、頭脳やキーが変わっていれば切り替える
+dlg.addEventListener("close", () => {
+  if (!brainDirty || phase === "busy" || phase === "loading") return;
+  brainDirty = false;
+  if (convo) endConvo();
+  phase = "off"; gemReady = false; setInput();
+  boot().then(afterBoot);
+});
 $("#rebootBtn").addEventListener("click", () => { dlg.close(); boot(); });
 $("#clearBtn").addEventListener("click", () => {
   if (phase === "busy" || !confirm("このアプリの会話を消去しますか？")) return;
   history = []; store.set("aibo:hist:" + projectKey, history); renderHistory(); dlg.close();
 });
 function syncInfo(){
+  if (brain() === "gemini"){
+    $("#rebootBtn").hidden = true;
+    $("#sysinfo").textContent = `頭脳：Gemini（${$("#gemModel").value}）\n状態：${gemReady ? "稼働中" : gemKey() ? "未起動" : "APIキー未設定"}\nアプリの版：${APP_VERSION}`;
+    return;
+  }
   const pending = loadedId && !loadedId.startsWith($("#model").value);
   $("#rebootBtn").hidden = !engine || !pending;
   $("#rebootBtn").disabled = phase === "busy" || phase === "loading";
@@ -728,6 +769,19 @@ async function checkGPU(){
 }
 async function boot(){
   if (phase === "loading" || phase === "busy") return;
+  if (brain() === "gemini"){
+    $("#tGpu").textContent = "Gemini";
+    if (!gemKey()){
+      phase = "off"; sphere.set("off"); setInput();
+      status("APIキーが未設定", "設定でGeminiのAPIキーを入力してください", true);
+      syncInfo(); dlg.showModal(); return;
+    }
+    gemReady = true; store.set("aibo:booted", true);
+    phase = "ready"; sphere.set("ready"); sphere.pulse(); sphere.wave();
+    status("待機中", "Geminiで稼働"); setInput();
+    if (!history.length) showEmpty();
+    return;
+  }
   if (!(await checkGPU())){
     phase = "error"; sphere.set("error"); $("#tGpu").textContent = "非対応";
     status("起動できません", "このブラウザはWebGPU非対応です", true);
@@ -779,7 +833,7 @@ function setInput(){
   const ready = phase === "ready", busy = phase === "busy";
   $("#input").disabled = !ready || convo;
   const mic = $("#micBtn");
-  mic.disabled = !engine || phase === "loading";
+  mic.disabled = !brainUp() || phase === "loading";
   mic.classList.toggle("convo", convo);
   const stopMode = busy && !convo;
   mic.classList.toggle("stop", stopMode);
@@ -788,7 +842,7 @@ function setInput(){
     mic.innerHTML = stopMode ? ICON_STOP : ICON_MIC;
   }
   mic.setAttribute("aria-label", stopMode ? "回答を止める" : convo ? "会話を終了" : "会話を始める");
-  $("#input").placeholder = engine ? "質問を入力" : "起動すると質問できます";
+  $("#input").placeholder = brainUp() ? "質問を入力" : "起動すると質問できます";
   const sb = $("#sendBtn");
   sb.classList.toggle("stop", busy); sb.innerHTML = busy ? ICON_STOP : ICON_SEND;
   sb.setAttribute("aria-label", busy ? "回答を止める" : "送信");
@@ -803,6 +857,72 @@ function systemPrompt(){
   if (convo) s += "\n\n今は音声で会話しています。前置きなしで、話し言葉の1〜2文で答えてください。記号や箇条書きは使わないでください。コードは本当に必要なときだけ短く示してください。";
   return s;
 }
+/* ══ 生成：端末内とGeminiを同じ形で扱う ══ */
+function stopGen(){ stopGen(); gemAbort?.abort(); }
+async function* localStream(messages, max){
+  const st = await engine.chat.completions.create({ messages, stream:true, temperature:0.3, max_tokens:max });
+  for await (const c of st){ const d = c.choices?.[0]?.delta?.content; if (d) yield d; }
+}
+function gemErr(code, t){
+  let msg = ""; try { msg = JSON.parse(t).error?.message || ""; } catch {}
+  if (/API key not valid|API_KEY_INVALID/i.test(msg)) return "APIキーが正しくありません。設定で確認してください。";
+  if (code === 403) return "このAPIキーでは使えません。キーを確認してください。";
+  if (code === 404) return "選んだGeminiのモデルが見つかりません。設定で別のモデルを選んでください。";
+  if (code === 429) return "無料枠の回数制限に達しました。少し待つか、設定でFlash-Liteを選んでください。";
+  return `Geminiでエラーが発生しました（${code}）${msg ? "：" + msg : ""}`;
+}
+async function* geminiStream(messages, max){
+  const sys = messages.find(m => m.role === "system")?.content || "";
+  const contents = [];
+  for (const m of messages){
+    if (m.role === "system") continue;
+    const role = m.role === "assistant" ? "model" : "user";
+    if (!contents.length && role === "model") continue;          // 先頭はユーザーの発言から
+    const last = contents[contents.length - 1];
+    if (last && last.role === role) last.parts[0].text += "\n" + m.content;   // 同じ話者が続いたらまとめる
+    else contents.push({ role, parts:[{ text:m.content }] });
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${$("#gemModel").value}:streamGenerateContent?alt=sse`;
+  const body = fast => JSON.stringify({
+    systemInstruction:{ parts:[{ text:sys }] }, contents,
+    generationConfig:{ temperature:0.4, maxOutputTokens:max, ...(fast ? { thinkingConfig:{ thinkingBudget:0 } } : {}) },
+  });
+  gemAbort = new AbortController();
+  const req = b => fetch(url, { method:"POST", headers:{ "Content-Type":"application/json", "x-goog-api-key":gemKey() }, body:b, signal:gemAbort.signal });
+  let res;
+  try {
+    res = await req(body(true));                                  // 考える時間を省いて速く答えさせる
+    if (res.status === 400){
+      const t = await res.text();
+      if (/thinking/i.test(t)) res = await req(body(false));      // 省けないモデルなら通常どおり
+      else throw new Error(gemErr(400, t));
+    }
+  } catch (e){
+    if (e.name === "AbortError") return;
+    if (e instanceof TypeError) throw new Error("Googleに接続できませんでした。このネットワークではGoogleが使えない可能性があります。モバイル通信に切り替えるか、設定で「端末内」に戻してください。");
+    throw e;
+  }
+  if (!res.ok) throw new Error(gemErr(res.status, await res.text()));
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = "";
+  try {
+    for (;;){
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream:true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0){
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line.startsWith("data:")) continue;
+        try {
+          const j = JSON.parse(line.slice(5));
+          for (const part of j.candidates?.[0]?.content?.parts || []) if (part.text && !part.thought) yield part.text;
+        } catch {}
+      }
+    }
+  } catch (e){ if (e.name !== "AbortError") throw e; }
+}
+
 async function send(){
   const text = $("#input").value.trim();
   if (!text || phase !== "ready") return;
@@ -819,22 +939,27 @@ async function send(){
   body.classList.add("cursor");
   let out = "", n = 0; const t0 = performance.now();
   const talk = convo && $("#speakOn").checked && "speechSynthesis" in window;
-  speech.reset();
+  speech.reset(); skipTalk = false;
   try {
     const turns = convo ? 4 : HISTORY_TURNS;   // 会話中は読み込む履歴を減らして返答を速く
     const messages = [{ role:"system", content:systemPrompt() }, ...history.slice(-turns).map(({ role, content }) => ({ role, content }))];
-    const stream = await engine.chat.completions.create({ messages, stream:true, temperature:0.3, max_tokens: convo ? 180 : 1024 });
-    for await (const c of stream){
-      const d = c.choices?.[0]?.delta?.content || "";
-      if (!d) continue;
+    const gem = brain() === "gemini";
+    const stream = gem ? geminiStream(messages, convo ? 400 : 4096) : localStream(messages, convo ? 180 : 1024);
+    for await (const d of stream){
       out += d; n++;
       body.innerHTML = render(out);
       caption(null, out, true);
+      if (convo && !/```/.test(out) && (plain(out).match(/[。！？!?]/g) || []).length >= 3) stopGen();
       if (n % 3 === 0) sphere.pulse();
-      if (talk) speech.pump(out, false);
-      const sec = (performance.now() - t0) / 1000, tps = sec > 0 ? n / sec : 0;
-      $("#tTps").textContent = tps.toFixed(1).padStart(4, "0") + " t/s";
-      status("回答中", `${n} トークン`);
+      if (talk && !skipTalk) speech.pump(out, false);
+      const sec = (performance.now() - t0) / 1000;
+      if (gem){
+        $("#tTps").textContent = (sec > 0 ? out.length / sec : 0).toFixed(0).padStart(3, "0") + " 字/s";
+        status("回答中", `${out.length} 文字`);
+      } else {
+        $("#tTps").textContent = (sec > 0 ? n / sec : 0).toFixed(1).padStart(4, "0") + " t/s";
+        status("回答中", `${n} トークン`);
+      }
       scrollDown();
     }
   } catch (err){
@@ -847,16 +972,16 @@ async function send(){
     store.set("aibo:hist:" + projectKey, history.slice(-40));
     phase = "ready"; setInput();
     const took = `前回の回答 ${((performance.now() - t0) / 1000).toFixed(1)}秒 ／ ${n} トークン`;
-    if (talk && out && convo){
+    if (talk && out && convo && !skipTalk){
       speech.pump(out, true);
       await speech.drained();
     }
-    if (convo){ setTimeout(() => convo && phase === "ready" && listen(true), 120); }
+    if (convo){ setTimeout(() => convo && phase === "ready" && listen(true), 40); }
     else { sphere.set("ready"); status("待機中", took); }
   }
 }
 $("#sendBtn").addEventListener("click", () => {
-  if (phase === "busy"){ engine?.interruptGenerate(); speech.stop(); }
+  if (phase === "busy"){ stopGen(); speech.stop(); }
   else send();
 });
 $("#input").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); send(); } });
@@ -905,7 +1030,7 @@ const speech = (() => {
     u.lang = "ja-JP"; u.rate = +$("#rate").value; u.pitch = +$("#pitch").value; const v = chosen(); if (v) u.voice = v;
     pending++;
     if (!beat){
-      sphere.set("speak"); status("発話中", "マイクをタップすると会話を終了します");
+      sphere.set("speak"); status("発話中", "マイクをタップすると割り込んで話せます");
       beat = setInterval(() => sphere.pulse(), 190);
     }
     u.onend = u.onerror = () => {
@@ -930,7 +1055,21 @@ const speech = (() => {
       const seg = t.slice(spoken, end).replace(/\s+/g, " ").trim(); spoken = end;
       if (seg.replace(/[。、！？!?\s]/g, "")) say(seg);
     },
-    drained(){ return pending === 0 ? Promise.resolve() : new Promise(r => idle = r); },
+    drained(){
+      if (pending === 0) return Promise.resolve();
+      return new Promise(r => {
+        idle = r;
+        // iPhoneは読み上げ終了の通知が遅れることがあるので、話し終えたら即座に次へ
+        const t0 = Date.now();
+        const id = setInterval(() => {
+          if (pending === 0 || (Date.now() - t0 > 300 && !syn.speaking && !syn.pending)){
+            clearInterval(id); pending = 0; clearInterval(beat); beat = null;
+            if (idle){ const f = idle; idle = null; f(); }
+          }
+        }, 100);
+      });
+    },
+    active(){ return pending > 0 || !!syn?.speaking; },
     stop(){ syn?.cancel(); pending = 0; clearInterval(beat); beat = null; if (idle){ const f = idle; idle = null; f(); } },
     fill(){ fillVoices(); refill(); },
     prime(){ if (syn){ const u = new SpeechSynthesisUtterance(""); u.volume = 0; syn.speak(u); } },  // iPhoneはタップ時に一度鳴らす必要がある
@@ -951,7 +1090,7 @@ function chime(freq, len){
 function setListening(on){
   listening = on; $("#micBtn").classList.toggle("live", on);
   $("#micBtn").setAttribute("aria-label", convo ? "会話を終了" : "会話を始める");
-  if (on){ sphere.set("listen"); status("聴取中", "話し終えると自動で送信します"); }
+  if (on){ sphere.set("listen"); status("聴取中", "話し終えて少し待つと送信します"); }
 }
 function startConvo(auto){
   if (!SR){
@@ -968,32 +1107,43 @@ function endConvo(msg){
   convo = false;
   try { rec?.abort(); } catch {}
   speech.stop();
-  if (phase === "busy") engine?.interruptGenerate();
+  if (phase === "busy") stopGen();
   setListening(false); setInput();
   sphere.set(phase === "error" ? "error" : "ready");
   status("待機中", msg || "会話を終了しました");
   addMsg("note", "会話を終了しました");
 }
 $("#micBtn").addEventListener("click", () => {
-  if (phase === "busy" && !convo){ engine?.interruptGenerate(); return; }
-  if (convo) return endConvo();
+  if (phase === "busy" && !convo){ stopGen(); return; }
+  if (convo){
+    if (listening) return endConvo();
+    skipTalk = true;
+    if (phase === "busy") stopGen();
+    speech.stop();
+    chime(880, .05);
+    return;
+  }
   if (!$("#typebar").hidden){ $("#typebar").hidden = true; $("#kbBtn").classList.remove("on"); }
   startConvo(false);
 });
 
-function listen(auto){
+let quiet = 0;   // 無言で聞き取りが終わった回数
+function listen(auto, again){
   if (!convo) return;
   let heard = false, silentEnd = false;
-  rec = new SR(); rec.lang = "ja-JP"; rec.interimResults = true; rec.continuous = false;
+  // 連続モードにして、iPhone側の早すぎる区切りを防ぐ。区切りはこちらで判定する
+  rec = new SR(); rec.lang = "ja-JP"; rec.interimResults = true; rec.continuous = true;
   let hush = null;
+  const idle = setTimeout(() => { silentEnd = true; try { rec.stop(); } catch {} }, 9000);   // 9秒何も話さなければ区切る
   rec.onresult = e => {
-    let txt = "", done = false;
-    for (let i = 0; i < e.results.length; i++){ txt += e.results[i][0].transcript; done = e.results[i].isFinal; }
+    let txt = "";
+    for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    clearTimeout(idle);
     $("#input").value = txt; autoGrow(); heard = true; sphere.pulse();
     caption(txt, null);
-    // iPhone標準の区切りは遅いので、0.7秒黙ったら話し終えたとみなす
+    // 設定した秒数だけ黙ったら、話し終えたとみなす
     clearTimeout(hush);
-    hush = setTimeout(() => { try { rec.stop(); } catch {} }, done ? 150 : 700);
+    hush = setTimeout(() => { try { rec.stop(); } catch {} }, +$("#hush").value * 1000);
   };
   rec.onerror = e => {
     if (e.error === "aborted") return;
@@ -1009,14 +1159,17 @@ function listen(auto){
     endConvo("音声入力が止まりました");
   };
   rec.onend = () => {
-    clearTimeout(hush);
+    clearTimeout(hush); clearTimeout(idle);
     if (heard) chime(520, .07);
     setListening(false);
     if (!convo) return;
-    if (heard && $("#input").value.trim()) send();
-    else endConvo(silentEnd ? "しばらく声がなかったので会話を終了しました" : "");
+    if (heard && $("#input").value.trim()){ quiet = 0; send(); return; }
+    // 無言でもすぐには終わらず、もう2回（約20秒）待つ
+    if (++quiet <= 2){ setTimeout(() => listen(auto, true), 60); return; }
+    quiet = 0;
+    endConvo("しばらく声がなかったので会話を終了しました");
   };
-  try { rec.start(); setListening(true); sphere.wave(); chime(880, .06); }
+  try { rec.start(); setListening(true); if (!again){ sphere.wave(); chime(880, .06); } }
   catch (err){ convo = false; setInput(); auto ? askTap() : addMsg("err", "音声入力を開始できませんでした：" + err.message); }
 }
 function askTap(){
