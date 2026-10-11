@@ -12,216 +12,230 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💠</text></svg>">
 <style>
 :root{
-  --bg:#020b14; --glass:rgba(10,40,64,.38); --line:#3fd8ff; --line-dim:rgba(63,216,255,.35);
-  --text:#bdf3ff; --soft:#7fb8cc; --warn:#ff8a3d; --red:#ff4d5e;
+  --bg:#020a12; --line:#3fd8ff; --line-dim:rgba(63,216,255,.28); --line-faint:rgba(63,216,255,.12);
+  --text:#c4f2ff; --hi:#eafcff; --soft:#6fa6b9; --warn:#ff8a3d; --red:#ff5468;
   --ui:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
-  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace;
-  --cut:10px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   color-scheme:dark;box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 }
 *,*::before,*::after{box-sizing:inherit}
-html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
+html{height:100%;background:var(--bg);scroll-padding-top:env(safe-area-inset-top,0px)}
 body{
-  margin:0;height:100%;font-family:var(--ui);color:var(--text);
+  margin:0;height:100%;overflow:hidden;font-family:var(--ui);color:var(--text);
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
   background:
-    radial-gradient(ellipse at 50% 0%,rgba(63,216,255,.16),transparent 60%),
-    linear-gradient(rgba(63,216,255,.05) 1px,transparent 1px) 0 0/24px 24px,
-    linear-gradient(90deg,rgba(63,216,255,.05) 1px,transparent 1px) 0 0/24px 24px,
+    radial-gradient(ellipse 70% 40% at 50% 18%,rgba(40,150,210,.16),transparent 70%),
+    radial-gradient(ellipse 120% 60% at 50% 120%,rgba(20,80,130,.25),transparent 70%),
     var(--bg);
-  display:grid;grid-template-rows:auto auto 1fr auto;gap:10px;
-  padding:10px max(10px,env(safe-area-inset-left,0px)) 10px max(10px,env(safe-area-inset-right,0px));
-  max-width:900px;margin-inline:auto;overflow:hidden;
 }
-/* ホログラム板：角を斜めに落とし、四隅にブラケット */
-.plate{
-  position:relative;padding:12px 16px;
-  background:var(--glass);
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  clip-path:polygon(var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%,0 var(--cut));
-  box-shadow:inset 0 0 0 1px var(--line-dim),inset 0 0 24px rgba(63,216,255,.08);
+/* 方眼は奥に行くほど消える */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;
+  background:
+    linear-gradient(var(--line-faint) 1px,transparent 1px) 0 0/28px 28px,
+    linear-gradient(90deg,var(--line-faint) 1px,transparent 1px) 0 0/28px 28px;
+  -webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 30%,#000 10%,transparent 75%);
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 30%,#000 10%,transparent 75%);
+  opacity:.5;
 }
-.plate::before,.plate::after{
-  content:"";position:absolute;width:18px;height:18px;pointer-events:none;
-  border:2px solid var(--line);filter:drop-shadow(0 0 4px var(--line));
+.app{
+  position:relative;height:100%;max-width:820px;margin:0 auto;
+  display:grid;grid-template-rows:auto 1fr auto;
+  padding:0 max(12px,env(safe-area-inset-left,0px)) 12px max(12px,env(safe-area-inset-right,0px));
 }
-.plate::before{right:0;top:0;border-left:0;border-bottom:0}
-.plate::after{left:0;bottom:0;border-right:0;border-top:0}
 
-header{display:flex;align-items:center;gap:14px}
-.ident{flex:1;min-width:0}
-.ident h1{margin:0;font-size:1.3rem;font-weight:300;letter-spacing:.35em;color:#e8fbff;text-shadow:0 0 10px rgba(63,216,255,.8)}
-.ident .serial{font-family:var(--mono);font-size:.68rem;color:var(--soft);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lamps{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap}
-.lamp{display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--soft)}
-.lamp i{width:14px;height:4px;background:rgba(63,216,255,.15);box-shadow:0 0 0 1px var(--line-dim)}
-.lamp.on i{background:var(--line);box-shadow:0 0 8px var(--line)}
-.lamp.on{color:var(--text)}
-.lamp.err i{background:var(--red);box-shadow:0 0 8px var(--red)}
-.lamp.err{color:#ffb3ba}
-.lamp.blink i{animation:blink .6s steps(2) infinite}
-@keyframes blink{50%{opacity:.2}}
-
-/* 主役：多重リングのコア */
-.core{position:relative;width:96px;height:96px;flex:none;filter:drop-shadow(0 0 6px rgba(63,216,255,.6))}
-.core svg{width:100%;height:100%;display:block;overflow:visible}
-.core .val{position:absolute;inset:0;display:grid;place-content:center;text-align:center;font-family:var(--mono);color:#e8fbff}
-.core .val b{font-size:1.1rem;font-weight:400;line-height:1}
-.core .val small{font-size:.55rem;color:var(--soft);margin-top:3px}
-#ringArc{transition:stroke-dashoffset .35s ease}
-.core.spin #rotor{animation:spin 6s linear infinite;transform-origin:50px 50px}
-.core.spin #rotor2{animation:spin 3s linear infinite reverse;transform-origin:50px 50px}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-.controls{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
-.field label{display:block;font-size:.68rem;color:var(--soft);margin:0 0 4px 2px;letter-spacing:.08em}
-select,textarea{
-  width:100%;font:inherit;font-size:16px;color:var(--text);border-radius:0;
-  background:rgba(2,16,28,.7);border:1px solid var(--line-dim);
-  box-shadow:inset 0 0 12px rgba(63,216,255,.08);
+/* ── 球体ステージ ── */
+.stage{position:relative;height:min(38vh,300px);min-height:200px;margin:0 -12px}
+#sphere{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#sphere:active{cursor:grabbing}
+.topbar{position:absolute;inset:10px 14px auto;display:flex;justify-content:space-between;align-items:center;z-index:2;pointer-events:none}
+.topbar h1{margin:0;font-size:.78rem;font-weight:400;letter-spacing:.42em;color:var(--soft)}
+.icon-btn{
+  pointer-events:auto;width:36px;height:36px;display:grid;place-items:center;
+  color:var(--soft);background:none;border:0;cursor:pointer;border-radius:50%;
 }
-select{padding:8px;-webkit-appearance:none;appearance:none;padding-right:26px;
-  background-image:linear-gradient(45deg,transparent 50%,var(--line) 50%),linear-gradient(135deg,var(--line) 50%,transparent 50%);
-  background-position:calc(100% - 14px) 52%,calc(100% - 9px) 52%;background-size:5px 5px;background-repeat:no-repeat}
-select option{background:#04182a}
-.memo{grid-column:1/-1;display:none}
-.memo.open{display:block}
-.memo textarea{min-height:64px;padding:8px;resize:vertical;font-size:14px}
-
-.btn{
-  font:inherit;font-size:.82rem;letter-spacing:.15em;cursor:pointer;white-space:nowrap;
-  color:#e8fbff;padding:10px 16px;border:0;
-  background:rgba(63,216,255,.14);
-  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);
-  box-shadow:inset 0 0 0 1px var(--line),inset 0 0 14px rgba(63,216,255,.35);
-  text-shadow:0 0 6px var(--line);transition:background .12s;
+.icon-btn:hover{color:var(--hi)}
+.icon-btn svg{width:20px;height:20px}
+.status{
+  position:absolute;left:0;right:0;bottom:8px;text-align:center;z-index:2;pointer-events:none;
 }
-.btn:hover:not(:disabled){background:rgba(63,216,255,.28)}
-.btn:active:not(:disabled){background:rgba(63,216,255,.5)}
-.btn:disabled{opacity:.35;cursor:not-allowed}
-.btn.hazard{color:#ffe1cf;background:rgba(255,138,61,.16);box-shadow:inset 0 0 0 1px var(--warn),inset 0 0 14px rgba(255,138,61,.4);text-shadow:0 0 6px var(--warn)}
-.btn:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.status b{display:block;font-weight:300;font-size:1.02rem;letter-spacing:.18em;color:var(--hi);
+  text-shadow:0 0 12px rgba(63,216,255,.7);font-variant-numeric:tabular-nums}
+.status small{display:block;margin-top:2px;font-size:.66rem;color:var(--soft);letter-spacing:.06em}
+.status.err b{color:#ffc2c9;text-shadow:0 0 12px rgba(255,84,104,.7)}
 
-/* 表示面 */
-.bezel{min-height:0;display:flex;padding:0}
-.screen{position:relative;flex:1;min-height:0;overflow:hidden}
-.screen::after{
-  content:"";position:absolute;inset:0;pointer-events:none;
-  background:repeating-linear-gradient(0deg,rgba(63,216,255,.035) 0 1px,transparent 1px 4px);
-}
+/* ── 会話 ── */
+.log-wrap{position:relative;min-height:0}
 #log{
-  position:absolute;inset:0;overflow-y:auto;padding:16px 16px 20px;
-  font-size:14.5px;line-height:1.7;color:var(--text);-webkit-overflow-scrolling:touch;
+  position:absolute;inset:0;overflow-y:auto;padding:22px 2px 18px;
+  font-size:14.5px;line-height:1.75;-webkit-overflow-scrolling:touch;
+  -webkit-mask-image:linear-gradient(transparent,#000 28px,#000 calc(100% - 14px),transparent);
+  mask-image:linear-gradient(transparent,#000 28px,#000 calc(100% - 14px),transparent);
 }
-.msg{margin:0 0 18px;max-width:72ch}
-.msg .who{font-size:.66rem;letter-spacing:.2em;color:var(--line);margin-bottom:3px}
-.msg.user{margin-left:auto;color:#e8fbff}
-.msg.user .body{border-right:2px solid var(--line);padding-right:10px;text-align:right}
-.msg.user .who{text-align:right}
-.msg.sys{color:var(--soft);font-size:.8rem}
-.msg.err{color:#ffb3ba}
-.msg.err .who{color:var(--red)}
+.msg{margin:0 0 20px;max-width:68ch;animation:in .28s ease-out}
+@keyframes in{from{opacity:0;transform:translateY(4px)}}
+.msg.user{margin-left:auto;max-width:85%;width:fit-content}
+.msg.user .body{
+  color:var(--hi);padding:8px 13px;
+  background:linear-gradient(180deg,rgba(63,216,255,.14),rgba(63,216,255,.06));
+  box-shadow:inset 0 0 0 1px var(--line-dim);
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,9px 100%,0 calc(100% - 9px));
+}
+.msg.assistant{padding-left:14px;position:relative}
+.msg.assistant::before{content:"";position:absolute;left:0;top:.55em;width:5px;height:5px;background:var(--line);box-shadow:0 0 8px var(--line);transform:rotate(45deg)}
+.msg.note{font-size:.76rem;color:var(--soft);text-align:center;margin:6px 0 18px}
+.msg.err{font-size:.82rem;color:#ffc2c9;padding:9px 12px;box-shadow:inset 2px 0 0 var(--red);background:rgba(255,84,104,.07)}
 .body{white-space:pre-wrap;word-break:break-word}
-.body code{font-family:var(--mono);background:rgba(63,216,255,.12);padding:0 4px}
-.codebox{margin:8px 0;border:1px solid var(--line-dim);background:rgba(0,10,20,.65);white-space:normal;text-align:left}
-.codebox .bar{display:flex;justify-content:space-between;align-items:center;padding:3px 8px;border-bottom:1px solid var(--line-dim);font-family:var(--mono);font-size:.7rem;color:var(--soft)}
-.codebox pre{margin:0;padding:10px;overflow-x:auto;white-space:pre;font-family:var(--mono);font-size:13px;line-height:1.5;color:#d6f7ff}
-.copy{font:inherit;font-size:.7rem;color:var(--line);background:none;border:1px solid var(--line-dim);padding:2px 8px;cursor:pointer}
-.cursor::after{content:"▍";color:var(--line);animation:blink .8s steps(2) infinite;margin-left:2px}
-.empty{color:var(--soft);font-size:.86rem;line-height:1.9;max-width:46ch}
-.empty strong{color:#e8fbff;font-weight:600}
+.body code{font-family:var(--mono);font-size:.9em;color:var(--hi);background:rgba(63,216,255,.1);padding:1px 5px}
+.body b{color:var(--hi);font-weight:600}
+.codebox{margin:10px 0;white-space:normal;background:rgba(1,8,15,.75);box-shadow:inset 0 0 0 1px var(--line-dim)}
+.codebox .bar{display:flex;justify-content:space-between;align-items:center;padding:4px 6px 4px 10px;font-family:var(--mono);font-size:.68rem;color:var(--soft);box-shadow:inset 0 -1px 0 var(--line-faint)}
+.codebox pre{margin:0;padding:10px 12px;overflow-x:auto;white-space:pre;font-family:var(--mono);font-size:12.5px;line-height:1.55;color:#d8f6ff;tab-size:2}
+.copy{font:inherit;font-size:.68rem;color:var(--line);background:none;border:0;padding:4px 8px;cursor:pointer}
+.copy.done{color:var(--hi)}
+.cursor::after{content:"";display:inline-block;width:.5em;height:1em;vertical-align:-.15em;margin-left:2px;background:var(--line);box-shadow:0 0 6px var(--line);animation:blink .9s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.empty{height:100%;display:grid;place-content:center;text-align:center;color:var(--soft);font-size:.82rem;line-height:1.9;padding:0 20px}
 
-.console{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
-.console textarea{min-height:46px;max-height:30vh;padding:10px;resize:none;line-height:1.45}
-.console .stack{display:flex;flex-direction:column;gap:8px}
-.sub{display:flex;gap:8px;grid-column:1/-1;font-size:.7rem;color:var(--soft);justify-content:space-between;align-items:center}
-.linkbtn{font:inherit;font-size:.7rem;color:var(--text);background:none;border:none;text-decoration:underline;text-decoration-color:var(--line-dim);cursor:pointer;padding:2px}
-
-@media (max-width:560px){
-  .controls{grid-template-columns:1fr 1fr}
-  .controls #bootBtn{grid-column:1/-1}
-  .core{width:80px;height:80px}
-  .ident h1{font-size:1.1rem;letter-spacing:.25em}
+/* ── 入力バー ── */
+.dock{
+  display:flex;align-items:flex-end;gap:6px;padding:6px;
+  background:linear-gradient(180deg,rgba(14,46,70,.55),rgba(8,28,44,.55));
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:inset 0 0 0 1px var(--line-dim),0 0 24px rgba(0,0,0,.4);
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);
+  position:relative;
 }
+.dock::after{content:"";position:absolute;left:12px;right:12px;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent);opacity:.6}
+.dock textarea{
+  flex:1;min-height:40px;max-height:30vh;resize:none;border:0;outline:0;background:none;
+  font:inherit;font-size:16px;line-height:1.5;color:var(--hi);padding:8px 6px;
+}
+.dock textarea::placeholder{color:var(--soft)}
+.round{
+  flex:none;width:40px;height:40px;display:grid;place-items:center;cursor:pointer;
+  color:var(--line);background:rgba(63,216,255,.08);border:0;border-radius:50%;
+  box-shadow:inset 0 0 0 1px var(--line-dim);transition:background .15s,color .15s,box-shadow .15s;
+}
+.round svg{width:19px;height:19px}
+.round:hover:not(:disabled){background:rgba(63,216,255,.18)}
+.round:disabled{opacity:.3;cursor:default}
+.round.primary{color:var(--bg);background:var(--line);box-shadow:0 0 14px rgba(63,216,255,.55)}
+.round.primary:disabled{color:var(--line);background:rgba(63,216,255,.08);box-shadow:inset 0 0 0 1px var(--line-dim)}
+.round.stop{color:#fff;background:var(--warn);box-shadow:0 0 14px rgba(255,138,61,.6)}
+.round.live{color:var(--bg);background:var(--hi);box-shadow:0 0 0 4px rgba(63,216,255,.25),0 0 18px rgba(63,216,255,.8);animation:ring 1.2s ease-out infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(63,216,255,.5),0 0 18px rgba(63,216,255,.8)}100%{box-shadow:0 0 0 12px rgba(63,216,255,0),0 0 18px rgba(63,216,255,.8)}}
+:focus-visible{outline:2px solid var(--hi);outline-offset:2px}
+
+/* ── 設定シート ── */
+dialog{
+  width:min(92vw,440px);max-height:86vh;padding:0;border:0;color:var(--text);
+  background:linear-gradient(180deg,rgba(10,36,56,.92),rgba(4,18,30,.95));
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  box-shadow:inset 0 0 0 1px var(--line-dim),0 20px 60px rgba(0,0,0,.6);
+  clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px);
+}
+dialog::backdrop{background:rgba(1,6,12,.6)}
+.sheet{padding:18px 18px 16px;display:grid;gap:16px}
+.sheet header{display:flex;justify-content:space-between;align-items:center}
+.sheet h2{margin:0;font-size:.85rem;font-weight:400;letter-spacing:.3em;color:var(--hi)}
+.f label{display:block;font-size:.72rem;color:var(--soft);margin-bottom:5px}
+.f select,.f textarea{
+  width:100%;font:inherit;font-size:16px;color:var(--hi);border:0;border-radius:0;
+  background:rgba(1,10,18,.7);box-shadow:inset 0 0 0 1px var(--line-dim);padding:9px 10px;
+}
+.f select{-webkit-appearance:none;appearance:none;padding-right:28px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--line) 50%),linear-gradient(135deg,var(--line) 50%,transparent 50%);
+  background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;background-size:5px 5px;background-repeat:no-repeat}
+.f select option{background:#04182a}
+.f textarea{min-height:76px;resize:vertical;font-size:14px;line-height:1.55}
+.f .hint{font-size:.68rem;color:var(--soft);margin-top:5px;line-height:1.6}
+.switch{display:flex;justify-content:space-between;align-items:center;font-size:.82rem}
+.switch input{appearance:none;-webkit-appearance:none;width:42px;height:24px;border-radius:12px;position:relative;cursor:pointer;
+  background:rgba(63,216,255,.1);box-shadow:inset 0 0 0 1px var(--line-dim);transition:background .2s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--soft);transition:transform .2s,background .2s}
+.switch input:checked{background:rgba(63,216,255,.35)}
+.switch input:checked::after{transform:translateX(18px);background:var(--hi);box-shadow:0 0 8px var(--line)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.txt-btn{
+  font:inherit;font-size:.78rem;cursor:pointer;padding:9px 14px;border:0;color:var(--hi);
+  background:rgba(63,216,255,.12);box-shadow:inset 0 0 0 1px var(--line-dim);
+}
+.txt-btn.danger{color:#ffc2c9;background:rgba(255,84,104,.08);box-shadow:inset 0 0 0 1px rgba(255,84,104,.4)}
+.meta{font-family:var(--mono);font-size:.64rem;color:var(--soft);word-break:break-all;line-height:1.6}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
+<div class="app">
 
-<header class="plate">
-  <div class="ident">
-    <h1>相棒コア</h1>
-    <div class="serial" id="serial">端末内推論ユニット ／ 待機中</div>
-    <div class="lamps">
-      <span class="lamp" id="lampGpu"><i></i>GPU</span>
-      <span class="lamp" id="lampEng"><i></i>エンジン</span>
-      <span class="lamp" id="lampBusy"><i></i>処理中</span>
+  <header class="stage">
+    <canvas id="sphere" aria-label="AIコア。停止中はタップで起動"></canvas>
+    <div class="topbar">
+      <h1>相棒コア</h1>
+      <button class="icon-btn" id="openSettings" aria-label="設定">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      </button>
     </div>
-  </div>
-  <div class="core" id="core" aria-live="polite">
-    <svg viewBox="0 0 100 100" aria-hidden="true">
-      <g id="rotor" fill="none" stroke="#3fd8ff">
-        <circle cx="50" cy="50" r="48" stroke-width=".6" stroke-dasharray="18 5 3 5" opacity=".8"/>
-      </g>
-      <g id="ticks" stroke="#3fd8ff" stroke-width="1" opacity=".55"></g>
-      <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(63,216,255,.15)" stroke-width="5"/>
-      <circle id="ringArc" cx="50" cy="50" r="38" fill="none" stroke="#3fd8ff" stroke-width="5"
-        stroke-dasharray="238.76" stroke-dashoffset="238.76" transform="rotate(-90 50 50)"/>
-      <g id="rotor2" fill="none" stroke="#3fd8ff" stroke-width="2" opacity=".7">
-        <circle cx="50" cy="50" r="30" stroke-dasharray="6 3.4"/>
-      </g>
-      <circle cx="50" cy="50" r="24" fill="rgba(2,16,28,.85)" stroke="rgba(63,216,255,.5)" stroke-width=".6"/>
-    </svg>
-    <div class="val"><b id="gVal">--</b><small id="gUnit">停止</small></div>
-  </div>
-</header>
+    <div class="status" id="status" aria-live="polite"><b id="sMain">タップして起動</b><small id="sSub">端末内で動くコード相談AI</small></div>
+  </header>
 
-<section class="plate controls">
-  <div class="field">
-    <label for="project">相談するアプリ</label>
-    <select id="project"></select>
-  </div>
-  <div class="field">
-    <label for="model">モデル</label>
-    <select id="model"></select>
-  </div>
-  <button class="btn" id="bootBtn">エンジン起動</button>
-  <div class="field memo" id="memoWrap">
-    <label for="memo">このアプリのメモ（使っている技術・現状など。毎回AIに伝えます）</label>
-    <textarea id="memo" placeholder="例：Three.js r128、スマホ縦画面、ブロック破壊まで実装済み"></textarea>
-  </div>
-</section>
+  <div class="log-wrap"><div id="log"></div></div>
 
-<main class="bezel">
-  <div class="screen"><div id="log"></div></div>
-</main>
+  <div class="dock">
+    <button class="round" id="micBtn" disabled aria-label="音声で入力">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+    </button>
+    <textarea id="input" rows="1" placeholder="起動すると質問できます" disabled></textarea>
+    <button class="round primary" id="sendBtn" disabled aria-label="送信">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+    </button>
+  </div>
+</div>
 
-<section class="plate console">
-  <textarea id="input" rows="2" placeholder="コードの質問、エラー文の貼り付けなど" disabled></textarea>
-  <div class="stack">
-    <button class="btn" id="sendBtn" disabled>送信</button>
-    <button class="btn hazard" id="stopBtn" hidden>停止</button>
-  </div>
-  <div class="sub">
-    <span id="hint">Ctrl / ⌘ + Enter でも送信</span>
-    <span>
-      <button class="linkbtn" id="memoBtn">メモを編集</button>
-      <button class="linkbtn" id="clearBtn">記録を消去</button>
-    </span>
-  </div>
-</section>
+<dialog id="settings">
+  <form method="dialog" class="sheet">
+    <header>
+      <h2>設定</h2>
+      <button class="icon-btn" value="close" aria-label="閉じる">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="f">
+      <label for="project">相談するアプリ</label>
+      <select id="project"></select>
+    </div>
+    <div class="f">
+      <label for="memo">このアプリのメモ</label>
+      <textarea id="memo" placeholder="使っている技術や進み具合。毎回AIに伝えます&#10;例：Three.js r128、スマホ縦画面、ブロック破壊まで実装済み"></textarea>
+    </div>
+    <div class="f">
+      <label for="model">モデル</label>
+      <select id="model"></select>
+      <div class="hint" id="modelHint">iPhoneで落ちる場合は「軽量」を選んでください。</div>
+    </div>
+    <label class="switch">話し終えたら自動で送信<input type="checkbox" id="autoSend"></label>
+    <div class="row">
+      <button type="button" class="txt-btn" id="rebootBtn">このモデルで再起動</button>
+      <button type="button" class="txt-btn danger" id="clearBtn">このアプリの会話を消去</button>
+    </div>
+    <div class="meta" id="meta">未起動</div>
+  </form>
+</dialog>
 
 <script type="module">
 const $ = s => document.querySelector(s);
 
-/* ── 設定 ───────────────── */
+/* ══ 設定値 ══ */
 const MODELS = [
-  { base:"Qwen2.5-Coder-1.5B-Instruct", label:"標準 1.5B（約1GB）" },
-  { base:"Qwen2.5-Coder-0.5B-Instruct", label:"軽量 0.5B（約0.4GB）" },
-  { base:"Qwen2.5-Coder-3B-Instruct",   label:"高性能 3B（約2GB・iPhoneは不安定）" },
+  { base:"Qwen2.5-Coder-1.5B-Instruct", label:"標準（1.5B・約1GB）" },
+  { base:"Qwen2.5-Coder-0.5B-Instruct", label:"軽量（0.5B・約0.4GB）" },
+  { base:"Qwen2.5-Coder-3B-Instruct",   label:"高性能（3B・約2GB、パソコン向け）" },
 ];
 const PROJECTS = [
-  { key:"general", name:"汎用（指定なし）", ctx:"" },
+  { key:"general", name:"指定なし", ctx:"" },
   { key:"block",   name:"ブロックゲーム", ctx:"スマホのブラウザで遊ぶマインクラフト風ブロックゲーム。" },
   { key:"monster", name:"モンスターRPG", ctx:"オリジナルのモンスター収集・育成RPG。ブラウザ版プロトタイプから開始し、Unity/C#への移行も候補。" },
   { key:"camera",  name:"構図ガイドカメラ", ctx:"スマホのカメラ映像に15種類の基本構図ガイドを重ねるWebアプリ。GitHub Pagesで公開。" },
@@ -236,196 +250,324 @@ const BASE_PROMPT =
   "コードは省略せず、そのまま動く形で、言語名付きのコードブロックで示してください。" +
   "変更箇所だけで足りる場合は、どこを差し替えるかを明記してください。" +
   "確信がない内容は推測だと明示してください。";
-const HISTORY_TURNS = 6;   // 小型モデルの文脈長に収めるため直近だけ送る
+const HISTORY_TURNS = 6;
 
-/* ── 保存（失敗しても動く） ── */
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
   set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
 };
+let webllm = null, engine = null, loadedId = null, f16 = false;
+let phase = "off";            // off / loading / ready / busy / error
+let projectKey = store.get("aibo:project", "general"), history = [];
 
-/* ── 状態 ───────────────── */
-let webllm = null, engine = null, loadedId = null, f16 = false, busy = false;
-let projectKey = store.get("aibo:project", "general");
-let history = [];
-
-/* ── ゲージ ─────────────── */
-const ARC = 238.76;
-(function drawTicks(){
-  const g = $("#ticks"); let s = "";
-  for (let i = 0; i < 36; i++){
-    const a = i * 10 * Math.PI / 180, r1 = i % 3 ? 44 : 41, r2 = 47;
-    s += `<line x1="${50+r1*Math.sin(a)}" y1="${50-r1*Math.cos(a)}" x2="${50+r2*Math.sin(a)}" y2="${50-r2*Math.cos(a)}"/>`;
+/* ══ 粒子の球体 ═══════════════════════════════ */
+const sphere = (() => {
+  const cv = $("#sphere"), g = cv.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const N = innerWidth < 560 ? 620 : 1000;
+  const TAU = Math.PI * 2;
+  const pts = [];
+  for (let i = 0; i < N; i++){
+    const y = 1 - 2 * (i + .5) / N, r = Math.sqrt(1 - y * y), th = i * 2.399963;
+    const a = Math.random() * TAU, b = Math.acos(2 * Math.random() - 1), d = 1.9 + Math.random() * 1.8;
+    pts.push({ x:Math.cos(th)*r, y, z:Math.sin(th)*r,
+      sx:Math.sin(b)*Math.cos(a)*d, sy:Math.cos(b)*d*.55, sz:Math.sin(b)*Math.sin(a)*d,
+      seed:Math.random(), tw:Math.random() * TAU, k:1 });
   }
-  g.innerHTML = s;
-})();
-function gauge(ratio, val, unit, spinning){
-  $("#ringArc").style.strokeDashoffset = ARC * (1 - Math.max(0, Math.min(1, ratio)));
-  $("#gVal").textContent = val; $("#gUnit").textContent = unit;
-  $("#core").classList.toggle("spin", !!spinning);
-}
-function lamp(id, mode){ const el = $(id); el.classList.remove("on","err","blink"); if (mode) mode.split(" ").forEach(c => el.classList.add(c)); }
+  // 周回する衛星リング（2本、傾き違い）
+  const rings = [{ tilt:1.15, yaw:.4, r:1.32, n:90, dir:1 }, { tilt:-.9, yaw:-.6, r:1.48, n:110, dir:-1 }];
+  const MODES = {
+    off:    { speed:.10, radius:.86, bright:.38, jitter:0,   ring:.25, col:[63,216,255] },
+    load:   { speed:.4,  radius:1,   bright:.8,  jitter:0,   ring:.6,  col:[63,216,255] },
+    ready:  { speed:.16, radius:1,   bright:.9,  jitter:0,   ring:.55, col:[63,216,255] },
+    think:  { speed:.85, radius:1.03,bright:1,   jitter:0,   ring:1,   col:[110,228,255] },
+    listen: { speed:.25, radius:1.1, bright:1.05,jitter:.045,ring:.8,  col:[190,246,255] },
+    error:  { speed:.05, radius:.88, bright:.75, jitter:.015,ring:.2,  col:[255,84,104] },
+  };
+  const S = { mode:"off", assemble:1, energy:0, rot:0, tilt:.36, vrot:0, vtilt:0, ...structuredClone(MODES.off) };
+  const waves = [];
+  let W = 0, H = 0, last = performance.now();
 
-/* ── 表示 ───────────────── */
-const esc = s => s.replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
-function inline(s){
-  return esc(s).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+  function resize(){
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  new ResizeObserver(resize).observe(cv); resize();
+
+  // ドラッグで回転（慣性つき）・タップ判定
+  let drag = null;
+  cv.addEventListener("pointerdown", e => { drag = { x:e.clientX, y:e.clientY, moved:0 }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY;
+    S.vrot = dx * .012; S.vtilt = dy * .008;
+    S.rot += dx * .01; S.tilt = Math.max(-1.1, Math.min(1.1, S.tilt + dy * .007));
+  });
+  cv.addEventListener("pointerup", () => { if (drag && drag.moved < 8) cv.dispatchEvent(new CustomEvent("tap")); drag = null; });
+  cv.addEventListener("pointercancel", () => drag = null);
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+  function project(x, y, z, cy, sy, cx, sx){
+    const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+    return [x1, y * cx - z1 * sx, y * sx + z1 * cx];
+  }
+
+  function frame(t){
+    const dt = Math.min((t - last) / 1000, .05); last = t;
+    const tg = MODES[S.mode], e = 1 - Math.pow(.025, dt);
+    for (const k of ["speed","radius","bright","jitter","ring"]) S[k] = lerp(S[k], tg[k], e);
+    for (let c = 0; c < 3; c++) S.col[c] = lerp(S.col[c], tg.col[c], e);
+    S.energy *= Math.pow(.12, dt);
+    if (!drag){
+      S.rot += (reduce ? S.speed * .2 : S.speed) * dt + S.vrot; S.vrot *= Math.pow(.05, dt);
+      S.tilt += S.vtilt; S.vtilt *= Math.pow(.05, dt); S.tilt = lerp(S.tilt, .36, 1 - Math.pow(.4, dt));
+    }
+
+    g.clearRect(0, 0, W, H);
+    const bob = reduce ? 0 : Math.sin(t / 2200) * 5;
+    const R = Math.min(W * .3, H * .3) * S.radius * (1 + (reduce ? 0 : Math.sin(t / 1500) * .012) + S.energy * .06);
+    const cxp = W / 2, cyp = H * .44 + bob;
+    const [cr, cg, cb] = S.col;
+    const rgb = (m, a) => `rgba(${Math.round(cr*m)},${Math.round(cg*m)},${Math.round(cb*m)},${a})`;
+
+    // 床の影（浮いている高さで濃さが変わる）
+    const fy = H * .44 + R * 1.62, sh = .22 * S.bright * (1 - bob / 30);
+    g.save(); g.translate(cxp, fy); g.scale(1, .16);
+    const fl = g.createRadialGradient(0, 0, 0, 0, 0, R * 1.1);
+    fl.addColorStop(0, rgb(1, sh)); fl.addColorStop(1, rgb(1, 0));
+    g.fillStyle = fl; g.beginPath(); g.arc(0, 0, R * 1.1, 0, TAU); g.fill(); g.restore();
+
+    // 芯の光
+    const glow = g.createRadialGradient(cxp, cyp, 0, cxp, cyp, R * 1.6);
+    glow.addColorStop(0, rgb(1, .13 * S.bright + S.energy * .14));
+    glow.addColorStop(.5, rgb(1, .04 * S.bright));
+    glow.addColorStop(1, rgb(1, 0));
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+
+    const cy = Math.cos(S.rot), sy = Math.sin(S.rot), cx = Math.cos(S.tilt), sx = Math.sin(S.tilt);
+    g.globalCompositeOperation = "lighter";
+
+    // 粒子：奥は深い青、手前は白に近く
+    for (const p of pts){
+      p.k += ((p.seed < S.assemble ? 1 : 0) - p.k) * Math.min(1, dt * 2.6);
+      const k = p.k, j = 1 + S.jitter * Math.sin(t * .013 + p.seed * 60);
+      const [x1, y1, z2] = project(lerp(p.sx, p.x, k) * j, lerp(p.sy, p.y, k) * j, lerp(p.sz, p.z, k) * j, cy, sy, cx, sx);
+      const s = 1 + z2 * .24, d = (z2 + 1) / 2;
+      const px = cxp + x1 * R * s, py = cyp + y1 * R * s;
+      const tw = reduce ? 1 : .72 + .28 * Math.sin(t * .0028 + p.tw);
+      const a = (.08 + .92 * d * d) * S.bright * (.3 + .7 * k) * tw;
+      if (a < .02) continue;
+      const m = .55 + .45 * d;
+      g.fillStyle = `rgba(${Math.round(cr*m + (255-cr)*d*.45)},${Math.round(cg*m + (255-cg)*d*.45)},${Math.round(cb*m + (255-cb)*d*.3)},${Math.min(1, a)})`;
+      const size = .6 + 1.7 * d + S.energy * .9;
+      if (d > .82 && p.seed > .9){ g.beginPath(); g.arc(px, py, size * .9, 0, TAU); g.fill(); }
+      else g.fillRect(px - size / 2, py - size / 2, size, size);
+    }
+
+    // 衛星リング
+    if (S.ring > .05) for (const rg of rings){
+      const ct = Math.cos(rg.tilt), st = Math.sin(rg.tilt), cyw = Math.cos(rg.yaw), syw = Math.sin(rg.yaw);
+      const spin = t * .00025 * rg.dir * (1 + S.speed * 2);
+      for (let i = 0; i < rg.n; i++){
+        const u = i / rg.n * TAU + spin;
+        let x = Math.cos(u) * rg.r, y = 0, z = Math.sin(u) * rg.r;
+        [y, z] = [y * ct - z * st, y * st + z * ct];
+        [x, z] = [x * cyw + z * syw, -x * syw + z * cyw];
+        const [x1, y1, z2] = project(x, y, z, cy, sy, cx, sx);
+        const d = (z2 / rg.r + 1) / 2, s = 1 + z2 * .18;
+        const gap = (i % 18) < 3 ? 0 : 1;        // 区切りの切れ目
+        const a = (.06 + .5 * d) * S.ring * gap * S.bright;
+        if (a < .02) continue;
+        g.fillStyle = rgb(1, a);
+        g.fillRect(cxp + x1 * R * s - .6, cyp + y1 * R * s - .6, 1.2, 1.2);
+      }
+    }
+
+    // 波紋
+    g.globalCompositeOperation = "source-over";
+    for (let i = waves.length - 1; i >= 0; i--){
+      const w = waves[i]; w.r += dt * 1.6; w.a -= dt * 1.4;
+      if (w.a <= 0){ waves.splice(i, 1); continue; }
+      g.strokeStyle = rgb(1, w.a * .5); g.lineWidth = 1;
+      g.beginPath(); g.arc(cxp, cyp, R * w.r, 0, TAU); g.stroke();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  return {
+    el: cv,
+    set(mode){ S.mode = mode; if (mode !== "load") S.assemble = 1; },
+    progress(p){ S.mode = "load"; S.assemble = Math.max(.03, p); },
+    pulse(){ S.energy = Math.min(1, S.energy + .3); },
+    wave(){ if (waves.length < 4) waves.push({ r:1.02, a:1 }); },
+  };
+})();
+
+function status(main, sub, err){
+  $("#sMain").textContent = main; $("#sSub").textContent = sub || "";
+  $("#status").classList.toggle("err", !!err);
 }
+
+/* ══ 会話表示 ══ */
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const inline = s => esc(s).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
 function render(text){
-  let out = "", last = 0;
-  const re = /```([\w+#.-]*)\n?([\s\S]*?)(?:```|$)/g; let m;
+  let out = "", last = 0, m;
+  const re = /```([\w+#.-]*)\n?([\s\S]*?)(?:```|$)/g;
   while ((m = re.exec(text))){
-    out += inline(text.slice(last, m.index));
+    out += inline(text.slice(last, m.index).replace(/\n+$/, "\n"));
     out += `<div class="codebox"><div class="bar"><span>${esc(m[1] || "code")}</span><button class="copy" type="button">コピー</button></div><pre>${esc(m[2].replace(/\n$/, ""))}</pre></div>`;
     last = re.lastIndex;
     if (m[0].length === 0) break;
   }
-  return out + inline(text.slice(last));
+  return out + inline(text.slice(last).replace(/^\n+/, ""));
 }
 function addMsg(role, text){
-  const who = { user:"あなた", assistant:"相棒コア", sys:"システム", err:"警告" }[role];
+  $("#log").querySelector(".empty")?.remove();
   const el = document.createElement("div");
   el.className = "msg " + role;
-  el.innerHTML = `<div class="who">${who}</div><div class="body"></div>`;
-  el.querySelector(".body").innerHTML = render(text);
-  $("#log").appendChild(el); scrollDown();
+  el.innerHTML = `<div class="body"></div>`;
+  el.firstChild.innerHTML = render(text);
+  $("#log").appendChild(el); scrollDown(true);
   return el;
 }
-function scrollDown(){ const l = $("#log"); l.scrollTop = l.scrollHeight; }
+function scrollDown(force){
+  const l = $("#log");
+  if (force || l.scrollHeight - l.scrollTop - l.clientHeight < 80) l.scrollTop = l.scrollHeight;
+}
 function showEmpty(){
-  $("#log").innerHTML = `<div class="empty">
-    <p><strong>エンジン起動</strong>を押すと、AIモデルを端末に読み込みます。</p>
-    <p>初回はダウンロードに数分かかります（Wi-Fi推奨）。2回目からは端末に保存されたデータで起動し、通信なしで動きます。</p>
-    <p>上の「相談するアプリ」を選ぶと、そのアプリの前提をAIに伝えた状態で相談できます。</p></div>`;
+  const p = PROJECTS.find(x => x.key === projectKey);
+  $("#log").innerHTML = `<div class="empty">${engine
+    ? `相談先：${esc(p.name)}<br>入力するか、マイクで話しかけてください`
+    : `球体をタップすると起動します<br>初回のみモデルのダウンロードに数分かかります`}</div>`;
 }
 function renderHistory(){
   $("#log").innerHTML = "";
-  if (!history.length){ showEmpty(); return; }
+  if (!history.length) return showEmpty();
   history.forEach(h => addMsg(h.role, h.content));
 }
-
 $("#log").addEventListener("click", async e => {
   const b = e.target.closest(".copy"); if (!b) return;
   const code = b.closest(".codebox").querySelector("pre").textContent;
   try { await navigator.clipboard.writeText(code); }
-  catch {
-    const t = document.createElement("textarea"); t.value = code; document.body.appendChild(t);
-    t.select(); document.execCommand("copy"); t.remove();
-  }
-  b.textContent = "コピー済み"; setTimeout(() => b.textContent = "コピー", 1500);
+  catch { const t = document.createElement("textarea"); t.value = code; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+  b.textContent = "コピー済み"; b.classList.add("done");
+  setTimeout(() => { b.textContent = "コピー"; b.classList.remove("done"); }, 1500);
 });
 
-/* ── プロジェクト ─────────── */
+/* ══ 設定シート ══ */
+const dlg = $("#settings");
+$("#openSettings").addEventListener("click", () => { syncMeta(); dlg.showModal(); });
+dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+PROJECTS.forEach(p => $("#project").add(new Option(p.name, p.key)));
+MODELS.forEach(m => $("#model").add(new Option(m.label, m.base)));
+$("#project").value = projectKey;
+$("#model").value = store.get("aibo:model", MODELS[0].base);
+$("#autoSend").checked = store.get("aibo:autosend", true);
+
 function loadProject(){
   history = store.get("aibo:hist:" + projectKey, []);
   $("#memo").value = store.get("aibo:memo:" + projectKey, "");
   renderHistory();
 }
-PROJECTS.forEach(p => $("#project").add(new Option(p.name, p.key)));
-$("#project").value = projectKey;
 $("#project").addEventListener("change", e => { projectKey = e.target.value; store.set("aibo:project", projectKey); loadProject(); });
 $("#memo").addEventListener("input", e => store.set("aibo:memo:" + projectKey, e.target.value));
-$("#memoBtn").addEventListener("click", () => { $("#memoWrap").classList.toggle("open"); if ($("#memoWrap").classList.contains("open")) $("#memo").focus(); });
+$("#model").addEventListener("change", e => { store.set("aibo:model", e.target.value); syncMeta(); });
+$("#autoSend").addEventListener("change", e => store.set("aibo:autosend", e.target.checked));
+$("#rebootBtn").addEventListener("click", () => { dlg.close(); boot(); });
 $("#clearBtn").addEventListener("click", () => {
-  if (busy || !confirm("このアプリの会話記録を消去しますか？")) return;
-  history = []; store.set("aibo:hist:" + projectKey, history); renderHistory();
+  if (phase === "busy" || !confirm("このアプリの会話を消去しますか？")) return;
+  history = []; store.set("aibo:hist:" + projectKey, history); renderHistory(); dlg.close();
 });
-
-MODELS.forEach(m => $("#model").add(new Option(m.label, m.base)));
-$("#model").value = store.get("aibo:model", MODELS[0].base);
-$("#model").addEventListener("change", e => {
-  store.set("aibo:model", e.target.value);
-  if (engine) $("#bootBtn").textContent = "モデル切替";
-});
-
-/* ── GPU 確認 ─────────────── */
-async function checkGPU(){
-  if (!navigator.gpu) return false;
-  try {
-    const ad = await navigator.gpu.requestAdapter();
-    if (!ad) return false;
-    f16 = ad.features.has("shader-f16");
-    return true;
-  } catch { return false; }
+function syncMeta(){
+  const pending = loadedId && !loadedId.startsWith($("#model").value);
+  $("#rebootBtn").hidden = !engine || !pending;
+  $("#rebootBtn").disabled = phase === "busy" || phase === "loading";
+  $("#meta").textContent = loadedId ? "稼働中のモデル：" + loadedId + (pending ? "（再起動で切替）" : "") : "未起動";
 }
 
-/* ── 起動 ───────────────── */
+/* ══ 起動 ══ */
+async function checkGPU(){
+  if (!navigator.gpu) return false;
+  try { const ad = await navigator.gpu.requestAdapter(); if (!ad) return false; f16 = ad.features.has("shader-f16"); return true; }
+  catch { return false; }
+}
 async function boot(){
-  if (busy) return;
-  const ok = await checkGPU();
-  if (!ok){
-    lamp("#lampGpu", "err");
-    addMsg("err", "この端末・ブラウザではWebGPUが使えないため、AIを動かせません。iPhoneはiOS 26以降のSafari、パソコンは最新のChromeかEdgeで開いてください。");
+  if (phase === "loading" || phase === "busy") return;
+  if (!(await checkGPU())){
+    phase = "error"; sphere.set("error");
+    status("起動できません", "このブラウザはWebGPU非対応です", true);
+    addMsg("err", "WebGPUが使えないため、AIを動かせません。iPhoneはiOS 26以降のSafari、パソコンは最新のChromeかEdgeで開いてください。");
     return;
   }
-  lamp("#lampGpu", "on");
-  busy = true; $("#bootBtn").disabled = true; setInput(false);
-  lamp("#lampEng", "on blink"); gauge(0, "0", "読込 %", true);
-
+  phase = "loading"; setInput(); sphere.progress(0); sphere.wave();
+  status("0%", "モデルを読み込んでいます");
   try {
     if (!webllm) webllm = await import("https://esm.run/@mlc-ai/web-llm@0.2.78");
     const list = webllm.prebuiltAppConfig.model_list.map(m => m.model_id);
     const base = $("#model").value;
-    const cands = (f16 ? ["q4f16_1","q4f32_1"] : ["q4f32_1","q4f16_1"]).map(q => `${base}-${q}-MLC`);
-    const id = cands.find(c => list.includes(c));
-    if (!id) throw new Error("選んだモデルがこのバージョンのWebLLMに見つかりません。別のモデルを選んでください。");
-
+    const id = (f16 ? ["q4f16_1","q4f32_1"] : ["q4f32_1","q4f16_1"]).map(q => `${base}-${q}-MLC`).find(c => list.includes(c));
+    if (!id) throw new Error("選んだモデルがこのバージョンのWebLLMに見つかりません。設定で別のモデルを選んでください。");
     const progress = r => {
       const p = r.progress ?? 0;
-      gauge(p, Math.round(p * 100), "読込 %", true);
-      $("#serial").textContent = r.text || "読込中";
+      sphere.progress(p);
+      status(Math.round(p * 100) + "%", /cache/i.test(r.text || "") ? "端末から読み込んでいます" : "モデルを読み込んでいます");
     };
     if (engine){ engine.setInitProgressCallback?.(progress); await engine.reload(id); }
     else engine = await webllm.CreateMLCEngine(id, { initProgressCallback: progress });
-
-    loadedId = id;
-    lamp("#lampEng", "on");
-    gauge(1, "OK", "稼働中", false);
-    $("#serial").textContent = id;
-    $("#bootBtn").textContent = "再起動";
-    if (!history.length) $("#log").innerHTML = "";
-    addMsg("sys", "エンジン稼働。質問をどうぞ。");
+    loadedId = id; store.set("aibo:booted", true);
+    phase = "ready"; sphere.set("ready"); sphere.pulse(); sphere.wave();
+    status("待機中", MODELS.find(m => id.startsWith(m.base))?.label.replace(/（.*/, "") + "モデルで稼働");
+    if (!history.length) showEmpty();
   } catch (err){
-    lamp("#lampEng", "err"); gauge(0, "ERR", "停止", false);
-    $("#serial").textContent = "起動失敗";
+    phase = engine ? "ready" : "error";
+    sphere.set(engine ? "ready" : "error");
+    status("起動できません", "詳細は下に表示しています", true);
     const msg = String(err?.message || err);
-    addMsg("err", "起動できませんでした：" + msg +
-      (/memory|OOM|Device was lost/i.test(msg) ? "\nメモリ不足の可能性があります。軽量 0.5B を選んで、他のタブを閉じてから再試行してください。" : "") +
+    addMsg("err", "起動に失敗しました：" + msg +
+      (/memory|OOM|Device was lost/i.test(msg) ? "\nメモリ不足の可能性があります。設定で「軽量」を選び、他のタブを閉じてから球体をタップしてください。" : "") +
       (/fetch|network|Failed to load/i.test(msg) ? "\nモデルのダウンロードに失敗しました。通信環境を確認してください。" : ""));
-  } finally {
-    busy = false; $("#bootBtn").disabled = false; setInput(!!loadedId);
-  }
+  } finally { setInput(); }
 }
-$("#bootBtn").addEventListener("click", boot);
+sphere.el.addEventListener("tap", () => {
+  if (phase === "off" || phase === "error") boot();
+  else { sphere.pulse(); sphere.wave(); }
+});
 
-/* ── 送信 ───────────────── */
-function setInput(on){
-  $("#input").disabled = !on; $("#sendBtn").disabled = !on;
+/* ══ 送信 ══ */
+const ICON_SEND = $("#sendBtn").innerHTML;
+const ICON_STOP = `<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></svg>`;
+function setInput(){
+  const ready = phase === "ready", busy = phase === "busy";
+  $("#input").disabled = !ready;
+  $("#micBtn").disabled = !ready;
+  $("#input").placeholder = engine ? "質問を入力" : "起動すると質問できます";
+  const sb = $("#sendBtn");
+  sb.classList.toggle("stop", busy); sb.innerHTML = busy ? ICON_STOP : ICON_SEND;
+  sb.setAttribute("aria-label", busy ? "回答を止める" : "送信");
+  sb.disabled = busy ? false : !(ready && $("#input").value.trim());
 }
 function systemPrompt(){
-  const p = PROJECTS.find(x => x.key === projectKey);
-  const memo = $("#memo").value.trim();
+  const p = PROJECTS.find(x => x.key === projectKey), memo = $("#memo").value.trim();
   let s = BASE_PROMPT;
   if (p?.ctx) s += "\n\n相談中のアプリ：" + p.ctx;
   if (memo) s += "\n補足メモ：" + memo;
   return s;
 }
-
 async function send(){
   const text = $("#input").value.trim();
-  if (!text || busy || !engine) return;
-  if (!history.length) $("#log").innerHTML = "";
+  if (!text || phase !== "ready") return;
   $("#input").value = ""; autoGrow();
   history.push({ role:"user", content:text }); addMsg("user", text);
+  phase = "busy"; setInput(); sphere.set("think"); sphere.wave();
+  status("考えています", "");
 
-  busy = true; setInput(false);
-  $("#sendBtn").hidden = true; $("#stopBtn").hidden = false;
-  lamp("#lampBusy", "on blink");
-
-  const el = addMsg("assistant", ""); const body = el.querySelector(".body");
+  const body = addMsg("assistant", "").firstChild;
   body.classList.add("cursor");
   let out = "", n = 0; const t0 = performance.now();
-
   try {
     const messages = [{ role:"system", content:systemPrompt() }, ...history.slice(-HISTORY_TURNS)];
     const stream = await engine.chat.completions.create({ messages, stream:true, temperature:0.3, max_tokens:1024 });
@@ -434,9 +576,9 @@ async function send(){
       if (!d) continue;
       out += d; n++;
       body.innerHTML = render(out);
+      if (n % 3 === 0) sphere.pulse();
       const sec = (performance.now() - t0) / 1000;
-      const tps = sec > 0 ? n / sec : 0;
-      gauge(Math.min(tps / 40, 1), tps.toFixed(1), "トークン/秒", true);
+      status("回答中", (sec > 0 ? n / sec : 0).toFixed(1) + " トークン/秒");
       scrollDown();
     }
   } catch (err){
@@ -446,22 +588,55 @@ async function send(){
     body.classList.remove("cursor");
     if (out) history.push({ role:"assistant", content:out });
     store.set("aibo:hist:" + projectKey, history.slice(-40));
-    busy = false; setInput(true);
-    $("#sendBtn").hidden = false; $("#stopBtn").hidden = true;
-    lamp("#lampBusy", null);
-    gauge(1, "OK", "稼働中", false);
-    $("#input").focus();
+    phase = "ready"; sphere.set("ready"); setInput();
+    const sec = ((performance.now() - t0) / 1000).toFixed(1);
+    status("待機中", `前回の回答 ${sec}秒`);
   }
 }
-$("#sendBtn").addEventListener("click", send);
-$("#stopBtn").addEventListener("click", () => engine?.interruptGenerate());
+$("#sendBtn").addEventListener("click", () => phase === "busy" ? engine?.interruptGenerate() : send());
 $("#input").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); send(); } });
 function autoGrow(){ const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, innerHeight * .3) + "px"; }
-$("#input").addEventListener("input", autoGrow);
+$("#input").addEventListener("input", () => { autoGrow(); setInput(); });
 
-/* ── 初期化 ─────────────── */
-loadProject();
-checkGPU().then(ok => lamp("#lampGpu", ok ? "on" : "err"));
+/* ══ 音声入力 ══ */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false;
+function setListening(on){
+  listening = on; $("#micBtn").classList.toggle("live", on);
+  $("#micBtn").setAttribute("aria-label", on ? "聞き取りを止める" : "音声で入力");
+  if (on){ sphere.set("listen"); status("聞いています", "話し終えると自動で止まります"); }
+  else if (phase === "ready"){ sphere.set("ready"); status("待機中", ""); }
+}
+$("#micBtn").addEventListener("click", () => {
+  if (!SR){ addMsg("err", "このブラウザは音声入力に対応していません。iPhoneはSafari、パソコンはChromeかEdgeで開いてください。"); return; }
+  if (listening){ rec.stop(); return; }
+  const base = $("#input").value.trim();
+  let heard = false;
+  rec = new SR(); rec.lang = "ja-JP"; rec.interimResults = true; rec.continuous = false;
+  rec.onresult = e => {
+    let txt = "";
+    for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    $("#input").value = (base ? base + " " : "") + txt; autoGrow(); setInput();
+    heard = true; sphere.pulse();
+  };
+  rec.onerror = e => {
+    const m = {
+      "not-allowed":"マイクが許可されていません。ブラウザの設定でこのサイトのマイクを許可してください。",
+      "service-not-allowed":"マイクが許可されていません。ブラウザの設定でこのサイトのマイクを許可してください。",
+      "network":"音声認識サービスに接続できませんでした。通信環境を確認してください。",
+      "no-speech":"音声が聞き取れませんでした。",
+      "audio-capture":"マイクが見つかりません。",
+    }[e.error];
+    if (e.error !== "aborted") addMsg("err", m || "音声入力でエラーが発生しました：" + e.error);
+  };
+  rec.onend = () => { setListening(false); if (heard && $("#autoSend").checked) send(); };
+  try { rec.start(); setListening(true); sphere.wave(); }
+  catch (err){ addMsg("err", "音声入力を開始できませんでした：" + err.message); }
+});
+
+/* ══ 初期化 ══ */
+loadProject(); setInput();
+if (store.get("aibo:booted", false)) boot();   // 一度起動したことがあれば自動で起動
 </script>
 </body>
 </html>
